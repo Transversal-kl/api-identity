@@ -4,6 +4,7 @@ import com.fv.billpay.api.role.dto.request.RoleRequestDto;
 import com.fv.billpay.api.role.dto.response.RoleResponseDto;
 import com.fv.billpay.api.role.service.IRoleService;
 import com.fv.billpay.api.role.utils.Process;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
@@ -21,31 +22,36 @@ public class RoleResource {
     IRoleService service;
 
     @POST
+    @RolesAllowed({"admin", "role-manager"})
     public Response create(@Valid RoleRequestDto dto) {
         return Process.ok(service.create(dto));
     }
 
     @PUT
     @Path("/{roleName}")
-    public Response update(@PathParam("roleName") String rolName, @Valid RoleRequestDto dto) {
+    @RolesAllowed({"admin", "role-manager"})
+    public Response update(@PathParam("roleName") String roleName, @Valid RoleRequestDto dto) {
         return Process.ok(service.update(dto));
     }
 
     @DELETE
-    @Path("/{rolName}")
-    public Response delete(@PathParam("rolName") String rolName) {
-        boolean deleted = service.delete(rolName);
+    @Path("/{roleName}")
+    @RolesAllowed("admin")
+    public Response delete(@PathParam("roleName") String roleName) {
+        boolean deleted = service.delete(roleName);
         if (deleted) return Process.ok("Eliminado correctamente");
         return Process.notFound("No se encontró el rol");
     }
 
     @GET
-    @Path("/{rolName}")
-    public Response getById(@PathParam("rolName") String rolName) {
-        return Process.ok(service.getById(rolName));
+    @Path("/{roleName}")
+    @RolesAllowed({"admin", "role-manager", "viewer"})
+    public Response getById(@PathParam("roleName") String roleName) {
+        return Process.ok(service.getById(roleName));
     }
 
     @GET
+    @RolesAllowed({"admin", "role-manager", "viewer"})
     public Response getAll(@QueryParam("page") @DefaultValue("0") int page,
                            @QueryParam("size") @DefaultValue("10") int size) {
         List<RoleResponseDto> roles = service.getAll(page, size);
