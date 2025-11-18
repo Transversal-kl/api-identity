@@ -8,6 +8,7 @@ import com.fv.billpay.api.role.utils.Process;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.groups.ConvertGroup;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -22,15 +23,16 @@ public class RoleResource {
 
     @POST
     @RolesAllowed({"admin", "role-manager","billpay_user_update"})
-    public Response create(@Valid RoleRequestDto dto) {
+    public Response create(@Valid @ConvertGroup(to = RoleRequestDto.CreateValidation.class) RoleRequestDto dto) {
         return Process.ok(service.create(dto));
     }
 
     @PUT
     @Path("/{roleName}")
     @RolesAllowed({"admin", "role-manager","billpay_user_update"})
-    public Response update(@PathParam("roleName") String roleName, @Valid RoleRequestDto dto) {
-        return Process.ok(service.update(dto));
+    public Response update(@PathParam("roleName") String roleName, 
+                          @Valid @ConvertGroup(to = RoleRequestDto.UpdateValidation.class) RoleRequestDto dto) {
+        return Process.ok(service.update(roleName, dto));
     }
 
     @DELETE
