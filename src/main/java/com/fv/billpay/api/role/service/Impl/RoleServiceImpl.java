@@ -23,10 +23,11 @@ public class RoleServiceImpl implements IRoleService {
     }
 
     @Override
-    public RoleResponseDto update(RoleRequestDto dto) {
-        // En Keycloak, los roles se identifican por nombre, no por id
-        repository.updateRole(dto.getName(), dto.getDescription());
-        return RoleMapper.toResponseDto(dto.getName(), dto.getDescription());
+    public RoleResponseDto update(String roleName, RoleRequestDto dto) {
+        // Usar el roleName del path como identificador, no el del DTO
+        // El DTO solo proporciona la nueva descripción
+        repository.updateRole(roleName, dto.getDescription());
+        return RoleMapper.toResponseDto(roleName, dto.getDescription());
     }
 
     @Override
@@ -53,7 +54,6 @@ public class RoleServiceImpl implements IRoleService {
 
     @Override
     public long count() {
-        // No implementado para Keycloak
-        return 0;
+        return repository.countRoles();
     }
 }
