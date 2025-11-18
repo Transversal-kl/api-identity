@@ -10,4 +10,5 @@ public interface IRoleRepository {
     boolean deleteRole(String roleName);
     Optional<RoleRepresentation> getRole(String roleName);
     List<RoleRepresentation> getAllRoles(int first, int max);
+    long countRoles();
 }
