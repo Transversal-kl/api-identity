@@ -16,11 +16,24 @@ public class PagedResponse<T> {
     private int totalPages;
 
     public PagedResponse(List<T> content, long totalElements, int page, int size) {
+        if (content == null) {
+            throw new IllegalArgumentException("content no puede ser null");
+        }
+        if (totalElements < 0) {
+            throw new IllegalArgumentException("totalElements debe ser mayor o igual a 0");
+        }
+        if (page < 0) {
+            throw new IllegalArgumentException("page debe ser mayor o igual a 0");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("size debe ser mayor a 0");
+        }
+        
         this.content = content;
         this.totalElements = totalElements;
         this.page = page;
         this.size = size;
-        this.totalPages = size > 0 ? (int) Math.ceil((double) totalElements / size) : 0;
+        this.totalPages = (int) Math.ceil((double) totalElements / size);
     }
 
     // Getters
