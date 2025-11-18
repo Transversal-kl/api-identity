@@ -106,7 +106,48 @@
 - **Nota:** El método `count()` está sin implementar
 - **Archivos:** `RoleResource.getById()`, `RoleResource.getAll()`, `RoleRepositoryImpl.getRole()`, `RoleRepositoryImpl.getAllRoles()`
 
-### 3.2. Módulo de Utilidades
+### 3.2. Módulo de Gestión de Grupos
+
+**Propósito:** Proveer operaciones CRUD para grupos en el contexto de autenticación/autorización del sistema BillPay.
+
+**Funcionalidades:**
+
+#### a. Creación de Grupos
+- **Endpoint:** `POST /groups`
+- **Validaciones:**
+  - Nombre obligatorio (3-50 caracteres)
+  - Descripción opcional (max 255 caracteres)
+- **Archivos:** `GroupResource.create()`, `GroupServiceImpl.create()`, `GroupRepositoryImpl.createGroup()`
+- **Nota:** Keycloak genera automáticamente un UUID como ID del grupo
+
+#### b. Actualización de Grupos
+- **Endpoint:** `PUT /groups/{groupId}`
+- **Nota:** Los grupos se identifican por ID (UUID), diferente a los roles que usan nombre
+- **Archivos:** `GroupResource.update()`, `GroupServiceImpl.update()`, `GroupRepositoryImpl.updateGroup()`
+
+#### c. Eliminación de Grupos
+- **Endpoint:** `DELETE /groups/{groupId}`
+- **Comportamiento:** Eliminación física del grupo en Keycloak
+- **Archivos:** `GroupResource.delete()`, `GroupServiceImpl.delete()`, `GroupRepositoryImpl.deleteGroup()`
+
+#### d. Consulta de Grupos
+- **Endpoints:**
+  - `GET /groups/{groupId}` - Consulta por ID
+  - `GET /groups/name/{groupName}` - Consulta por nombre
+  - `GET /groups?page=0&size=10` - Listado paginado
+- **Archivos:** `GroupResource.getById()`, `GroupResource.getByName()`, `GroupResource.getAll()`, `GroupRepositoryImpl.getGroup()`, `GroupRepositoryImpl.getGroupByName()`, `GroupRepositoryImpl.getAllGroups()`
+
+#### Diferencias Clave con Roles:
+
+| Aspecto | Roles | Grupos |
+|---------|-------|--------|
+| **Identificador** | Solo `name` (String) | `id` (UUID) + `name` |
+| **Descripción** | Campo directo en `RoleRepresentation` | Almacenada en `attributes.description` (Map) |
+| **Búsqueda** | Solo por nombre | Por ID o por nombre |
+| **Paginación API** | `roles.list(first, max)` | `groups.groups(first, max)` |
+| **Count** | `list().size()` | `count().get("count")` retorna Long |
+
+### 3.3. Módulo de Utilidades
 
 **Componentes:**
 
@@ -118,20 +159,24 @@
 }
 ```
 
-#### b. Mapeo de DTOs (`RoleMapper.java`)
+#### b. Mapeo de DTOs (`RoleMapper.java`, `GroupMapper.java`)
 - Conversión de `RoleRepresentation` (Keycloak) → `RoleResponseDto`
+- Conversión de `GroupRepresentation` (Keycloak) → `GroupResponseDto`
+- **Nota:** `GroupMapper` extrae la descripción desde `attributes.get("description")`
 
 #### c. Constantes (`Constants.java`)
 - ⚠️ **Código Legacy:** Contiene queries SQL que nunca se ejecutan
 - Probable preparación para migración futura a BD relacional
 
-### 3.3. Módulo de Integración con Keycloak
+### 3.4. Módulo de Integración con Keycloak
 
 **Componente:** `KeycloakAdminProvider`
 
 **Responsabilidades:**
-- Inicialización del cliente Keycloak con autenticación OAuth2 (Grant Type: Password)
-- Provisión del recurso `RolesResource` para operaciones CRUD
+- Inicialización del cliente Keycloak con autenticación OAuth2 (Grant Type: Client Credentials)
+- Provisión del recurso `RolesResource` para operaciones CRUD de roles
+- Provisión del recurso `GroupsResource` para operaciones CRUD de grupos
+- Retry automático en caso de fallo de conexión
 - Configuración centralizada mediante `@ConfigProperty`
 
 ---
@@ -162,6 +207,7 @@
 
 **API Keycloak Utilizada:**
 - `RolesResource` - Gestión de roles del realm
+- `GroupsResource` - Gestión de grupos del realm
 
 ### c. Servicios Web Expuestos
 
@@ -192,6 +238,36 @@ RoleRequestDto {
 
 // Response
 RoleResponseDto {
+  name: String
+  description: String
+}
+```
+
+#### API REST de Grupos
+
+**URL Base:** `http://localhost:8089/groups`
+
+| Método | Endpoint | Descripción | Request Body | Response |
+|--------|----------|-------------|--------------|----------|
+| `POST` | `/groups` | Crear nuevo grupo | `GroupRequestDto` | `GroupResponseDto` |
+| `PUT` | `/groups/{groupId}` | Actualizar grupo existente | `GroupRequestDto` | `GroupResponseDto` |
+| `DELETE` | `/groups/{groupId}` | Eliminar grupo | - | String (mensaje) |
+| `GET` | `/groups/{groupId}` | Obtener grupo por ID | - | `GroupResponseDto` |
+| `GET` | `/groups/name/{groupName}` | Obtener grupo por nombre | - | `GroupResponseDto` |
+| `GET` | `/groups?page=0&size=10` | Listar grupos paginados | - | `PagedResponse<GroupResponseDto>` |
+
+**DTOs:**
+
+```java
+// Request
+GroupRequestDto {
+  name: String (required, 3-50 chars)
+  description: String (optional, max 255 chars)
+}
+
+// Response
+GroupResponseDto {
+  id: String (UUID)
   name: String
   description: String
 }
@@ -314,6 +390,21 @@ keycloak.admin.password=123456
 - La entidad es manejada íntegramente por Keycloak
 - No hay relaciones con otras entidades en este microservicio
 
+#### Group (Keycloak GroupRepresentation)
+
+| Campo | Tipo | Descripción | Validación |
+|-------|------|-------------|------------|
+| `id` | String (UUID) | ID único del grupo generado por Keycloak | Auto-generado |
+| `name` | String | Nombre del grupo | Required, 3-50 chars |
+| `description` | String | Descripción almacenada en attributes | Optional, max 255 chars |
+
+**Notas:**
+- El ID (UUID) es generado automáticamente por Keycloak
+- La descripción se almacena en `attributes.put("description", List.of(description))`
+- Búsqueda por nombre requiere iteración (Keycloak no tiene índice por nombre)
+- La entidad es manejada íntegramente por Keycloak
+- No hay relaciones con otras entidades en este microservicio
+
 ---
 
 ## 7. Análisis de Código Legacy
@@ -353,6 +444,8 @@ Basándome en el namespace `com.fv.billpay.api.role`, este microservicio es part
 |--------------------|----------------------|-----------|-------|
 | **Gestión de Roles** | Autenticación y Autorización | ✅ Parcial | Solo gestiona roles, no usuarios ni permisos granulares |
 | | Control de Acceso Basado en Roles (RBAC) | ✅ Completo | CRUD completo de roles |
+| **Gestión de Grupos** | Organización de Usuarios | ✅ Completo | CRUD completo de grupos |
+| | Control de Acceso Basado en Grupos | ✅ Completo | Gestión de grupos para asignación a usuarios |
 | | Auditoría de Seguridad | ❌ Fuera de Alcance | No registra logs de auditoría |
 | | Gestión de Usuarios | ❌ Fuera de Alcance | Delegado a otros microservicios |
 
@@ -364,6 +457,7 @@ Basándome en el namespace `com.fv.billpay.api.role`, este microservicio es part
 | Procesamiento de Pagos | ❓ Desconocida | Posible microservicio `api-payment` |
 | Gestión de Clientes | ❓ Desconocida | Posible microservicio `api-customer` |
 | **Gestión de Roles** | ✅ Implementado | **api-role** (este sistema) |
+| **Gestión de Grupos** | ✅ Implementado | **api-role** (este sistema) |
 | Notificaciones | ❓ Desconocida | Posible microservicio `api-notification` |
 | Reportería | ❓ Desconocida | Posible microservicio `api-reports` |
 
