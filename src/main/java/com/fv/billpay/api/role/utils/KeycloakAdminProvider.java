@@ -8,6 +8,7 @@ import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.keycloak.admin.client.resource.RolesResource;
+import org.keycloak.admin.client.resource.GroupsResource;
 import org.jboss.logging.Logger;
 
 /**
@@ -94,6 +95,28 @@ public class KeycloakAdminProvider {
                 return keycloak.realm(realm).roles();
             } catch (Exception retryException) {
                 LOG.errorf(retryException, "Error crítico al obtener RolesResource después del retry");
+                throw new RuntimeException("No se pudo conectar con Keycloak Admin API", retryException);
+            }
+        }
+    }
+
+    /**
+     * Obtiene el recurso de gestión de grupos del realm.
+     * Implementa retry automático en caso de error de conexión.
+     * 
+     * @return GroupsResource para operaciones CRUD de grupos
+     * @throws RuntimeException si no se puede obtener el recurso después del retry
+     */
+    public GroupsResource getGroupsResource() {
+        try {
+            return keycloak.realm(realm).groups();
+        } catch (Exception e) {
+            LOG.warnf("Error al obtener GroupsResource, reintentando con nueva conexión: %s", e.getMessage());
+            try {
+                initializeKeycloakClient();
+                return keycloak.realm(realm).groups();
+            } catch (Exception retryException) {
+                LOG.errorf(retryException, "Error crítico al obtener GroupsResource después del retry");
                 throw new RuntimeException("No se pudo conectar con Keycloak Admin API", retryException);
             }
         }
