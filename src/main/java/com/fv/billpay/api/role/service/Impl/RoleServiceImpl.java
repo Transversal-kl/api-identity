@@ -53,7 +53,6 @@ public class RoleServiceImpl implements IRoleService {
 
     @Override
     public long count() {
-        // No implementado para Keycloak
-        return 0;
+        return repository.countRoles();
     }
 }
