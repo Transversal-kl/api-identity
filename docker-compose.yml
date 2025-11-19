@@ -1,0 +1,35 @@
+services:
+  api-identity:
+    build:
+      context: .
+      dockerfile: src/main/docker/Dockerfile.jvm
+    container_name: api-identity
+    ports:
+      - "8089:8089"
+    environment:
+      # Keycloak Configuration
+      KEYCLOAK_URL: http://keycloak:8083/
+      KEYCLOAK_REALM: billpay_app
+      KEYCLOAK_CLIENT_ID: cli_billpay_app
+      KEYCLOAK_CLIENT_SECRET: YGMyRIRzM2qa4hYZFxVVqrSQzRWlrZuB
+      
+      # PostgreSQL Configuration
+      DB_USERNAME: user_account
+      DB_PASSWORD: 1234
+      DB_REACTIVE_URL: postgresql://postgres17:5432/db_keycloak
+      
+      # JVM Options
+      JAVA_OPTS: "-Xms256m -Xmx512m"
+    networks:
+      - quarkus-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8089/openapi || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+networks:
+  quarkus-net:
+    external: true
