@@ -147,7 +147,55 @@
 | **Paginación API** | `roles.list(first, max)` | `groups.groups(first, max)` |
 | **Count** | `list().size()` | `count().get("count")` retorna Long |
 
-### 3.3. Módulo de Utilidades
+### 3.3. Módulo de Gestión de Roles en Grupos
+
+Este módulo permite asignar y gestionar roles dentro de grupos en Keycloak.
+
+**Archivos involucrados:**
+- `GroupRoleRequestDto.java` - DTO para asignar/desasignar roles
+- `GroupRoleResponseDto.java` - DTO de respuesta con información del rol
+- `GroupRoleMapper.java` - Conversión de `RoleRepresentation` a DTO
+- `IGroupRoleRepository.java` - Interface del repositorio
+- `GroupRoleRepositoryImpl.java` - Implementación con Keycloak Admin API
+- `IGroupRoleService.java` - Interface del servicio
+- `GroupRoleServiceImpl.java` - Lógica de negocio y validaciones
+- `GroupRoleResource.java` - Endpoints REST independientes
+
+#### a. Asignación de Roles a Grupos
+- **Endpoint:** `POST /groups/{groupId}/roles`
+- **Request Body:** `GroupRoleRequestDto` con lista de nombres de roles
+- **Comportamiento:** Asigna múltiples roles realm a un grupo
+- **Archivos:** `GroupRoleResource.assignRolesToGroup()`, `GroupRoleServiceImpl.assignRolesToGroup()`, `GroupRoleRepositoryImpl.assignRoleToGroup()`
+
+#### b. Desasignación de Roles de Grupos
+- **Endpoint:** `DELETE /groups/{groupId}/roles`
+- **Request Body:** `GroupRoleRequestDto` con lista de nombres de roles
+- **Comportamiento:** Remueve múltiples roles realm de un grupo
+- **Archivos:** `GroupRoleResource.removeRolesFromGroup()`, `GroupRoleServiceImpl.removeRolesFromGroup()`, `GroupRoleRepositoryImpl.removeRoleFromGroup()`
+
+#### c. Consulta de Roles Asignados
+- **Endpoint:** `GET /groups/{groupId}/roles`
+- **Response:** Lista de `GroupRoleResponseDto` con roles asignados al grupo
+- **Archivos:** `GroupRoleResource.getGroupRoles()`, `GroupRoleServiceImpl.getGroupRoles()`, `GroupRoleRepositoryImpl.getGroupRoles()`
+
+#### d. Consulta de Roles Disponibles
+- **Endpoint:** `GET /groups/{groupId}/roles/available`
+- **Response:** Lista de `GroupRoleResponseDto` con roles NO asignados al grupo
+- **Archivos:** `GroupRoleResource.getAvailableRoles()`, `GroupRoleServiceImpl.getAvailableRoles()`, `GroupRoleRepositoryImpl.getAvailableRoles()`
+
+#### Características Técnicas:
+
+| Aspecto | Implementación |
+|---------|----------------|
+| **API Keycloak** | `GroupResource.roles().realmLevel()` |
+| **Asignación** | `realmRoles.add(List<RoleRepresentation>)` |
+| **Desasignación** | `realmRoles.remove(List<RoleRepresentation>)` |
+| **Consulta asignados** | `realmRoles.listAll()` |
+| **Validación** | Verifica existencia del grupo antes de operar |
+| **Manejo de errores** | Reporta roles fallidos en WebApplicationException |
+| **Seguridad** | `@RolesAllowed` en todos los endpoints |
+
+### 3.4. Módulo de Utilidades
 
 **Componentes:**
 
@@ -268,6 +316,33 @@ GroupRequestDto {
 // Response
 GroupResponseDto {
   id: String (UUID)
+  name: String
+  description: String
+}
+```
+
+#### API REST de Roles en Grupos
+
+**URL Base:** `http://localhost:8089/groups/{groupId}/roles`
+
+| Método | Endpoint | Descripción | Request Body | Response |
+|--------|----------|-------------|--------------|----------|
+| `POST` | `/groups/{groupId}/roles` | Asignar roles a un grupo | `GroupRoleRequestDto` | `List<GroupRoleResponseDto>` |
+| `DELETE` | `/groups/{groupId}/roles` | Desasignar roles de un grupo | `GroupRoleRequestDto` | String (mensaje) |
+| `GET` | `/groups/{groupId}/roles` | Obtener roles asignados a un grupo | - | `List<GroupRoleResponseDto>` |
+| `GET` | `/groups/{groupId}/roles/available` | Obtener roles disponibles para un grupo | - | `List<GroupRoleResponseDto>` |
+
+**DTOs:**
+
+```java
+// Request
+GroupRoleRequestDto {
+  roleNames: List<String> (required, 1-50 items)
+}
+
+// Response
+GroupRoleResponseDto {
+  id: String
   name: String
   description: String
 }
