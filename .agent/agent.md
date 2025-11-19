@@ -480,9 +480,82 @@ keycloak.admin.password=123456
 - La entidad es manejada íntegramente por Keycloak
 - No hay relaciones con otras entidades en este microservicio
 
+### DTOs de Roles en Grupos
+
+#### GroupRoleRequestDto
+
+| Campo | Tipo | Descripción | Validación |
+|-------|------|-------------|------------|
+| `roleNames` | List\<String\> | Lista de nombres de roles a asignar/desasignar | Required, @NotEmpty, @Size(min=1, max=50) |
+
+**Uso:** Request para asignar o remover múltiples roles de un grupo
+
+#### GroupRoleResponseDto
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | String | ID del rol en Keycloak |
+| `name` | String | Nombre del rol |
+| `description` | String | Descripción del rol |
+
+**Uso:** Response para listar roles asignados o disponibles de un grupo
+
 ---
 
 ## 7. Análisis de Código Legacy
+
+### Archivos del Módulo de Roles en Grupos
+
+**Ubicación:** `src/main/java/com/fv/billpay/api/role/`
+
+#### DTOs (Data Transfer Objects)
+
+**`dto/request/GroupRoleRequestDto.java`**
+- Request DTO para asignar/desasignar roles a grupos
+- Campos: `List<String> roleNames`
+- Validaciones: `@NotEmpty`, `@Size(min=1, max=50)`
+
+**`dto/response/GroupRoleResponseDto.java`**
+- Response DTO para información de roles en grupos
+- Campos: `id`, `name`, `description`
+
+#### Mappers
+
+**`mapper/GroupRoleMapper.java`**
+- Convierte `RoleRepresentation` (Keycloak) a `GroupRoleResponseDto`
+- Mapper estático sin dependencias
+
+#### Repositorio
+
+**`repository/IGroupRoleRepository.java`**
+- Interfaz con 4 métodos: `assignRoleToGroup`, `removeRoleFromGroup`, `getGroupRoles`, `getAvailableRoles`
+
+**`repository/Impl/GroupRoleRepositoryImpl.java`**
+- Implementación usando Keycloak Admin API
+- APIs clave: `RoleMappingResource.realmLevel()` para gestionar roles a nivel realm
+- Logging detallado con `@Slf4j`
+
+#### Servicio
+
+**`service/IGroupRoleService.java`**
+- Interfaz de negocio con 4 métodos
+
+**`service/Impl/GroupRoleServiceImpl.java`**
+- Valida existencia de grupos antes de asignar roles
+- Manejo de errores: colecta roles fallidos y lanza `WebApplicationException`
+- Logging de operaciones
+
+#### Recurso REST
+
+**`resource/GroupRoleResource.java`**
+- Path: `/groups/{groupId}/roles`
+- 4 endpoints: POST, DELETE, GET, GET /available
+- Seguridad: `@RolesAllowed` en todos los endpoints
+- Validación de DTOs con `@Valid`
+
+---
+
+## 8. Análisis de Código Legacy
 
 ### Código Preparatorio No Utilizado
 
@@ -521,6 +594,8 @@ Basándome en el namespace `com.fv.billpay.api.role`, este microservicio es part
 | | Control de Acceso Basado en Roles (RBAC) | ✅ Completo | CRUD completo de roles |
 | **Gestión de Grupos** | Organización de Usuarios | ✅ Completo | CRUD completo de grupos |
 | | Control de Acceso Basado en Grupos | ✅ Completo | Gestión de grupos para asignación a usuarios |
+| **Roles en Grupos** | Asignación de Permisos a Grupos | ✅ Completo | CRUD de roles en grupos |
+| | Control de Acceso Granular | ✅ Completo | Permite asignar múltiples roles a grupos |
 | | Auditoría de Seguridad | ❌ Fuera de Alcance | No registra logs de auditoría |
 | | Gestión de Usuarios | ❌ Fuera de Alcance | Delegado a otros microservicios |
 
@@ -533,6 +608,7 @@ Basándome en el namespace `com.fv.billpay.api.role`, este microservicio es part
 | Gestión de Clientes | ❓ Desconocida | Posible microservicio `api-customer` |
 | **Gestión de Roles** | ✅ Implementado | **api-role** (este sistema) |
 | **Gestión de Grupos** | ✅ Implementado | **api-role** (este sistema) |
+| **Roles en Grupos** | ✅ Implementado | **api-role** (este sistema) |
 | Notificaciones | ❓ Desconocida | Posible microservicio `api-notification` |
 | Reportería | ❓ Desconocida | Posible microservicio `api-reports` |
 
@@ -545,6 +621,7 @@ Basándome en el namespace `com.fv.billpay.api.role`, este microservicio es part
 2. **Evolución del sistema:**
    - Considerar agregar gestión de permisos granulares (permissions/scopes)
    - Implementar asignación de roles a usuarios (actualmente solo gestiona definiciones de roles)
+   - ✅ **Completado:** Gestión de roles en grupos para control de acceso más granular
 
 3. **Observabilidad:**
    - Agregar trazabilidad distribuida (Jaeger, Zipkin)
