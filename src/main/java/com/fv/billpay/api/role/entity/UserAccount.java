@@ -38,8 +38,7 @@ public class UserAccount extends PanacheEntityBase {
     @Column(name = "last_name", length = 25)
     private String lastName;
 
-    @Lob
-    @Column(name = "profile_image")
+    @Column(name = "profile_image", columnDefinition = "bytea")
     private byte[] profileImage;
 
     @Column(name = "created_at", nullable = false)

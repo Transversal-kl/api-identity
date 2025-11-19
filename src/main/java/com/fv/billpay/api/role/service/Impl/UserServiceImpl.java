@@ -8,6 +8,7 @@ import com.fv.billpay.api.role.mapper.UserMapper;
 import com.fv.billpay.api.role.repository.IUserKeycloakRepository;
 import com.fv.billpay.api.role.repository.UserAccountRepository;
 import com.fv.billpay.api.role.service.IUserService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -167,6 +168,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @WithSession
     public Uni<UserResponseDto> getUserById(String userId) {
         try {
             UUID userUuid = UUID.fromString(userId);
@@ -200,6 +202,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @WithSession
     public Uni<List<UserResponseDto>> getAllUsers(int page, int size) {
         // Validar parámetros de paginación
         if (page < 0 || size <= 0) {
@@ -233,6 +236,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @WithSession
     public Uni<List<UserResponseDto>> searchUsersByUsername(String username) {
         if (username == null || username.trim().isEmpty()) {
             return Uni.createFrom().failure(new WebApplicationException(
@@ -326,6 +330,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @WithSession
     public Uni<byte[]> getProfileImage(String userId) {
         try {
             UUID userUuid = UUID.fromString(userId);

@@ -67,7 +67,7 @@ public class UserResource {
 
     @DELETE
     @Path("/{userId}")
-    @RolesAllowed({"admin"})
+    @RolesAllowed({"admin", "billpay_user_update"})
     @Operation(summary = "Eliminar usuario", description = "Elimina un usuario de Keycloak y PostgreSQL")
     @APIResponse(responseCode = "200", description = "Usuario eliminado exitosamente")
     @APIResponse(responseCode = "404", description = "Usuario no encontrado")
@@ -76,7 +76,7 @@ public class UserResource {
             @PathParam("userId") String userId) {
         log.info("Eliminando usuario: {}", userId);
         return userService.deleteUser(userId)
-            .map(v -> Response.ok("Usuario eliminado exitosamente").build());
+            .map(v -> Response.ok(java.util.Map.of("message", "Usuario eliminado exitosamente")).build());
     }
 
     @GET
@@ -166,7 +166,7 @@ public class UserResource {
             }
         })
         .chain(imageBytes -> userService.updateProfileImage(userId, imageBytes))
-        .map(v -> Response.ok("Imagen de perfil actualizada exitosamente").build());
+        .map(v -> Response.ok(java.util.Map.of("message", "Imagen de perfil actualizada exitosamente")).build());
     }
 
     @GET
@@ -195,7 +195,7 @@ public class UserResource {
             @PathParam("userId") String userId) {
         log.info("Eliminando imagen de perfil para usuario: {}", userId);
         return userService.updateProfileImage(userId, null)
-            .map(v -> Response.ok("Imagen de perfil eliminada exitosamente").build());
+            .map(v -> Response.ok(java.util.Map.of("message", "Imagen de perfil eliminada exitosamente")).build());
     }
 }
 

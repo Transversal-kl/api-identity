@@ -102,9 +102,7 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             UserRepresentation user = usersResource.get(userId).toRepresentation();
 
             // Actualizar solo los campos proporcionados
-            if (userUpdateDto.getUsername() != null) {
-                user.setUsername(userUpdateDto.getUsername());
-            }
+            // NOTA: username NO se puede actualizar en Keycloak una vez creado
             if (userUpdateDto.getEmail() != null) {
                 user.setEmail(userUpdateDto.getEmail());
             }
@@ -122,16 +120,25 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             usersResource.get(userId).update(user);
             
             log.info("Usuario actualizado exitosamente en Keycloak: {}", userId);
+            
+            // Advertir si se intentó cambiar username
+            if (userUpdateDto.getUsername() != null && 
+                !userUpdateDto.getUsername().equals(user.getUsername())) {
+                log.warn("Se intentó cambiar username de {} a {} pero Keycloak no permite cambiar username", 
+                    user.getUsername(), userUpdateDto.getUsername());
+            }
         } catch (NotFoundException e) {
             log.error("Usuario no encontrado en Keycloak: {}", userId);
             throw new WebApplicationException(
                 "Usuario con ID '" + userId + "' no encontrado",
                 Response.Status.NOT_FOUND
             );
+        } catch (WebApplicationException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error al actualizar usuario en Keycloak: {}", userId, e);
             throw new WebApplicationException(
-                "Error al actualizar usuario: " + e.getMessage(),
+                "Error al actualizar usuario en Keycloak: " + e.getMessage(),
                 Response.Status.INTERNAL_SERVER_ERROR
             );
         }
