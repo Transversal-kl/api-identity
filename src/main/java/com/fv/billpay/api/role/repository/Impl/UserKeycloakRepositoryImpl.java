@@ -2,19 +2,20 @@ package com.fv.billpay.api.role.repository.Impl;
 
 import com.fv.billpay.api.role.dto.request.UserRequestDto;
 import com.fv.billpay.api.role.dto.request.UserUpdateDto;
+import com.fv.billpay.api.role.exception.KeycloakSyncException;
+import com.fv.billpay.api.role.exception.UserAlreadyExistsException;
+import com.fv.billpay.api.role.exception.UserNotFoundException;
 import com.fv.billpay.api.role.repository.IUserKeycloakRepository;
 import com.fv.billpay.api.role.utils.KeycloakAdminProvider;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.NotFoundException;
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -68,28 +69,19 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
                 return userId;
             } else if (response.getStatus() == 409) {
                 response.close();
-                throw new WebApplicationException(
-                    "El usuario con username '" + userRequestDto.getUsername() + "' ya existe",
-                    Response.Status.CONFLICT
-                );
+                throw new UserAlreadyExistsException(userRequestDto.getUsername());
             } else {
                 String errorMessage = response.readEntity(String.class);
                 response.close();
                 log.error("Error al crear usuario en Keycloak. Status: {}, Error: {}", 
                     response.getStatus(), errorMessage);
-                throw new WebApplicationException(
-                    "Error al crear usuario en Keycloak: " + errorMessage,
-                    Response.Status.INTERNAL_SERVER_ERROR
-                );
+                throw new KeycloakSyncException("Error al crear usuario: " + errorMessage);
             }
-        } catch (WebApplicationException e) {
+        } catch (UserAlreadyExistsException | KeycloakSyncException e) {
             throw e;
         } catch (Exception e) {
             log.error("Error inesperado al crear usuario en Keycloak", e);
-            throw new WebApplicationException(
-                "Error inesperado al crear usuario: " + e.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            throw new KeycloakSyncException("Error inesperado al crear usuario", e);
         }
     }
 
@@ -129,18 +121,12 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             }
         } catch (NotFoundException e) {
             log.error("Usuario no encontrado en Keycloak: {}", userId);
-            throw new WebApplicationException(
-                "Usuario con ID '" + userId + "' no encontrado",
-                Response.Status.NOT_FOUND
-            );
-        } catch (WebApplicationException e) {
+            throw new UserNotFoundException(userId);
+        } catch (UserNotFoundException e) {
             throw e;
         } catch (Exception e) {
             log.error("Error al actualizar usuario en Keycloak: {}", userId, e);
-            throw new WebApplicationException(
-                "Error al actualizar usuario en Keycloak: " + e.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            throw new KeycloakSyncException("Error al actualizar usuario", e);
         }
     }
 
@@ -154,16 +140,10 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             log.info("Usuario eliminado exitosamente de Keycloak: {}", userId);
         } catch (NotFoundException e) {
             log.error("Usuario no encontrado en Keycloak: {}", userId);
-            throw new WebApplicationException(
-                "Usuario con ID '" + userId + "' no encontrado",
-                Response.Status.NOT_FOUND
-            );
+            throw new UserNotFoundException(userId);
         } catch (Exception e) {
             log.error("Error al eliminar usuario de Keycloak: {}", userId, e);
-            throw new WebApplicationException(
-                "Error al eliminar usuario: " + e.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            throw new KeycloakSyncException("Error al eliminar usuario", e);
         }
     }
 
@@ -175,16 +155,10 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             return usersResource.get(userId).toRepresentation();
         } catch (NotFoundException e) {
             log.error("Usuario no encontrado en Keycloak: {}", userId);
-            throw new WebApplicationException(
-                "Usuario con ID '" + userId + "' no encontrado",
-                Response.Status.NOT_FOUND
-            );
+            throw new UserNotFoundException(userId);
         } catch (Exception e) {
             log.error("Error al obtener usuario de Keycloak: {}", userId, e);
-            throw new WebApplicationException(
-                "Error al obtener usuario: " + e.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            throw new KeycloakSyncException("Error al obtener usuario", e);
         }
     }
 
@@ -196,10 +170,7 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             return usersResource.list(first, max);
         } catch (Exception e) {
             log.error("Error al obtener usuarios de Keycloak", e);
-            throw new WebApplicationException(
-                "Error al obtener usuarios: " + e.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            throw new KeycloakSyncException("Error al obtener usuarios", e);
         }
     }
 
@@ -211,10 +182,7 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             return usersResource.search(username, 0, 100);
         } catch (Exception e) {
             log.error("Error al buscar usuarios en Keycloak", e);
-            throw new WebApplicationException(
-                "Error al buscar usuarios: " + e.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            throw new KeycloakSyncException("Error al buscar usuarios", e);
         }
     }
 
@@ -229,10 +197,7 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             return false;
         } catch (Exception e) {
             log.error("Error al verificar existencia de usuario en Keycloak: {}", userId, e);
-            throw new WebApplicationException(
-                "Error al verificar usuario: " + e.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            throw new KeycloakSyncException("Error al verificar usuario", e);
         }
     }
 
@@ -253,10 +218,7 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
             log.info("Contraseña establecida para usuario: {}", userId);
         } catch (Exception e) {
             log.error("Error al establecer contraseña para usuario: {}", userId, e);
-            throw new WebApplicationException(
-                "Error al establecer contraseña: " + e.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            throw new KeycloakSyncException("Error al establecer contraseña", e);
         }
     }
 }

@@ -27,7 +27,32 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
         // Log de la excepción para debugging
         LOG.errorf(exception, "Excepción capturada: %s", exception.getClass().getSimpleName());
 
-        // 1. Excepciones de validación (Bean Validation)
+        // 1. Excepciones de dominio personalizadas
+        if (exception instanceof UserNotFoundException) {
+            return Response.status(Response.Status.NOT_FOUND)
+                .entity(new Process.StandardResponse("user_not_found", exception.getMessage()))
+                .build();
+        }
+        
+        if (exception instanceof UserAlreadyExistsException) {
+            return Response.status(Response.Status.CONFLICT)
+                .entity(new Process.StandardResponse("user_already_exists", exception.getMessage()))
+                .build();
+        }
+        
+        if (exception instanceof InvalidUserDataException) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(new Process.StandardResponse("invalid_user_data", exception.getMessage()))
+                .build();
+        }
+        
+        if (exception instanceof KeycloakSyncException) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity(new Process.StandardResponse("keycloak_sync_error", exception.getMessage()))
+                .build();
+        }
+
+        // 2. Excepciones de validación (Bean Validation)
         if (exception instanceof ConstraintViolationException) {
             ConstraintViolationException cve = (ConstraintViolationException) exception;
             String violations = cve.getConstraintViolations().stream()
@@ -39,7 +64,7 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
                 .build();
         }
 
-        // 2. Excepciones de JAX-RS (ya tienen código HTTP)
+        // 3. Excepciones de JAX-RS (ya tienen código HTTP)
         if (exception instanceof WebApplicationException) {
             WebApplicationException wae = (WebApplicationException) exception;
             int status = wae.getResponse().getStatus();
@@ -67,7 +92,7 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
                 .build();
         }
 
-        // 3. Excepciones de seguridad
+        // 4. Excepciones de seguridad
         if (exception instanceof SecurityException || 
             exception.getClass().getName().contains("Unauthorized")) {
             return Response.status(Response.Status.UNAUTHORIZED)
@@ -76,7 +101,7 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
                 .build();
         }
 
-        // 4. IllegalArgumentException y NullPointerException (errores de cliente)
+        // 5. IllegalArgumentException y NullPointerException (errores de cliente)
         if (exception instanceof IllegalArgumentException || 
             exception instanceof NullPointerException) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -85,7 +110,7 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
                 .build();
         }
 
-        // 5. Cualquier otra excepción no controlada (500 Internal Server Error)
+        // 6. Cualquier otra excepción no controlada (500 Internal Server Error)
         String errorMessage = isDevelopment() 
             ? exception.getMessage() + " (" + exception.getClass().getSimpleName() + ")"
             : "Error interno del servidor";
