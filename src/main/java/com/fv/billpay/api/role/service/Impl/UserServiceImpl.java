@@ -2,19 +2,23 @@ package com.fv.billpay.api.role.service.Impl;
 
 import com.fv.billpay.api.role.dto.request.UserRequestDto;
 import com.fv.billpay.api.role.dto.request.UserUpdateDto;
+import com.fv.billpay.api.role.dto.response.UserGroupResponseDto;
 import com.fv.billpay.api.role.dto.response.UserResponseDto;
+import com.fv.billpay.api.role.dto.response.UserRoleResponseDto;
 import com.fv.billpay.api.role.entity.UserAccount;
+import com.fv.billpay.api.role.exception.InvalidUserDataException;
+import com.fv.billpay.api.role.exception.KeycloakSyncException;
+import com.fv.billpay.api.role.exception.UserNotFoundException;
 import com.fv.billpay.api.role.mapper.UserMapper;
 import com.fv.billpay.api.role.repository.IUserKeycloakRepository;
 import com.fv.billpay.api.role.repository.UserAccountRepository;
 import com.fv.billpay.api.role.service.IUserService;
+import com.fv.billpay.api.role.utils.UuidValidator;
 import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.representations.idm.UserRepresentation;
 
@@ -61,14 +65,14 @@ public class UserServiceImpl implements IUserService {
                 });
         })
         .onFailure().transform(error -> {
-            if (error instanceof WebApplicationException) {
+            // Las excepciones personalizadas ya vienen del repository
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
                 return error;
             }
-            log.error("Error al crear usuario", error);
-            return new WebApplicationException(
-                "Error al crear usuario: " + error.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            log.error("Error inesperado al crear usuario", error);
+            return new KeycloakSyncException("Error inesperado al crear usuario", error);
         });
     }
 
@@ -76,13 +80,10 @@ public class UserServiceImpl implements IUserService {
     @WithTransaction
     public Uni<UserResponseDto> updateUser(String userId, UserUpdateDto userUpdateDto) {
         try {
-            UUID userUuid = UUID.fromString(userId);
+            UUID userUuid = UuidValidator.parseUuid(userId);
             
             return userAccountRepository.findById(userUuid)
-                .onItem().ifNull().failWith(new WebApplicationException(
-                    "Usuario con ID '" + userId + "' no encontrado en la base de datos",
-                    Response.Status.NOT_FOUND
-                ))
+                .onItem().ifNull().failWith(new UserNotFoundException(userId))
                 .invoke(userAccount -> {
                     // Actualizar en Keycloak (bloqueante)
                     userKeycloakRepository.updateUser(userId, userUpdateDto);
@@ -110,20 +111,16 @@ public class UserServiceImpl implements IUserService {
                         .map(updated -> UserMapper.toResponseDto(updated, keycloakUser));
                 })
                 .onFailure().transform(error -> {
-                    if (error instanceof WebApplicationException) {
+                    if (error instanceof UserNotFoundException ||
+                        error instanceof InvalidUserDataException ||
+                        error instanceof KeycloakSyncException) {
                         return error;
                     }
-                    log.error("Error al actualizar usuario: {}", userId, error);
-                    return new WebApplicationException(
-                        "Error al actualizar usuario: " + error.getMessage(),
-                        Response.Status.INTERNAL_SERVER_ERROR
-                    );
+                    log.error("Error inesperado al actualizar usuario: {}", userId, error);
+                    return new KeycloakSyncException("Error inesperado al actualizar usuario", error);
                 });
         } catch (IllegalArgumentException e) {
-            return Uni.createFrom().failure(new WebApplicationException(
-                "ID de usuario inválido: " + userId,
-                Response.Status.BAD_REQUEST
-            ));
+            return Uni.createFrom().failure(new InvalidUserDataException(e.getMessage()));
         }
     }
 
@@ -131,7 +128,7 @@ public class UserServiceImpl implements IUserService {
     @WithTransaction
     public Uni<Void> deleteUser(String userId) {
         try {
-            UUID userUuid = UUID.fromString(userId);
+            UUID userUuid = UuidValidator.parseUuid(userId);
             
             return Uni.createFrom().item(() -> {
                 // 1. Eliminar de Keycloak (bloqueante)
@@ -150,20 +147,16 @@ public class UserServiceImpl implements IUserService {
                     .replaceWithVoid();
             })
             .onFailure().transform(error -> {
-                if (error instanceof WebApplicationException) {
+                if (error instanceof UserNotFoundException ||
+                    error instanceof InvalidUserDataException ||
+                    error instanceof KeycloakSyncException) {
                     return error;
                 }
-                log.error("Error al eliminar usuario: {}", userId, error);
-                return new WebApplicationException(
-                    "Error al eliminar usuario: " + error.getMessage(),
-                    Response.Status.INTERNAL_SERVER_ERROR
-                );
+                log.error("Error inesperado al eliminar usuario: {}", userId, error);
+                return new KeycloakSyncException("Error inesperado al eliminar usuario", error);
             });
         } catch (IllegalArgumentException e) {
-            return Uni.createFrom().failure(new WebApplicationException(
-                "ID de usuario inválido: " + userId,
-                Response.Status.BAD_REQUEST
-            ));
+            return Uni.createFrom().failure(new InvalidUserDataException(e.getMessage()));
         }
     }
 
@@ -171,33 +164,26 @@ public class UserServiceImpl implements IUserService {
     @WithSession
     public Uni<UserResponseDto> getUserById(String userId) {
         try {
-            UUID userUuid = UUID.fromString(userId);
+            UUID userUuid = UuidValidator.parseUuid(userId);
             
             return userAccountRepository.findById(userUuid)
-                .onItem().ifNull().failWith(new WebApplicationException(
-                    "Usuario con ID '" + userId + "' no encontrado",
-                    Response.Status.NOT_FOUND
-                ))
+                .onItem().ifNull().failWith(new UserNotFoundException(userId))
                 .map(userAccount -> {
                     // Obtener información actual de Keycloak
                     UserRepresentation keycloakUser = userKeycloakRepository.getUserById(userId);
                     return UserMapper.toResponseDto(userAccount, keycloakUser);
                 })
                 .onFailure().transform(error -> {
-                    if (error instanceof WebApplicationException) {
+                    if (error instanceof UserNotFoundException ||
+                        error instanceof InvalidUserDataException ||
+                        error instanceof KeycloakSyncException) {
                         return error;
                     }
-                    log.error("Error al obtener usuario: {}", userId, error);
-                    return new WebApplicationException(
-                        "Error al obtener usuario: " + error.getMessage(),
-                        Response.Status.INTERNAL_SERVER_ERROR
-                    );
+                    log.error("Error inesperado al obtener usuario: {}", userId, error);
+                    return new KeycloakSyncException("Error inesperado al obtener usuario", error);
                 });
         } catch (IllegalArgumentException e) {
-            return Uni.createFrom().failure(new WebApplicationException(
-                "ID de usuario inválido: " + userId,
-                Response.Status.BAD_REQUEST
-            ));
+            return Uni.createFrom().failure(new InvalidUserDataException(e.getMessage()));
         }
     }
 
@@ -206,9 +192,8 @@ public class UserServiceImpl implements IUserService {
     public Uni<List<UserResponseDto>> getAllUsers(int page, int size) {
         // Validar parámetros de paginación
         if (page < 0 || size <= 0) {
-            return Uni.createFrom().failure(new WebApplicationException(
-                "Parámetros de paginación inválidos",
-                Response.Status.BAD_REQUEST
+            return Uni.createFrom().failure(new InvalidUserDataException(
+                "Parámetros de paginación inválidos (page=" + page + ", size=" + size + ")"
             ));
         }
         
@@ -228,10 +213,7 @@ public class UserServiceImpl implements IUserService {
                 .collect(Collectors.toList()))
             .onFailure().transform(error -> {
                 log.error("Error al obtener usuarios", error);
-                return new WebApplicationException(
-                    "Error al obtener usuarios: " + error.getMessage(),
-                    Response.Status.INTERNAL_SERVER_ERROR
-                );
+                return new KeycloakSyncException("Error al obtener usuarios", error);
             });
     }
 
@@ -239,9 +221,8 @@ public class UserServiceImpl implements IUserService {
     @WithSession
     public Uni<List<UserResponseDto>> searchUsersByUsername(String username) {
         if (username == null || username.trim().isEmpty()) {
-            return Uni.createFrom().failure(new WebApplicationException(
-                "El username es requerido para la búsqueda",
-                Response.Status.BAD_REQUEST
+            return Uni.createFrom().failure(new InvalidUserDataException(
+                "El username es requerido para la búsqueda"
             ));
         }
         
@@ -254,7 +235,7 @@ public class UserServiceImpl implements IUserService {
             List<Uni<UserResponseDto>> userUnis = keycloakUsers.stream()
                 .map(keycloakUser -> {
                     try {
-                        UUID userId = UUID.fromString(keycloakUser.getId());
+                        UUID userId = UuidValidator.parseUuid(keycloakUser.getId());
                         return userAccountRepository.findById(userId)
                             .map(userAccount -> {
                                 if (userAccount == null) {
@@ -280,10 +261,7 @@ public class UserServiceImpl implements IUserService {
         })
         .onFailure().transform(error -> {
             log.error("Error al buscar usuarios", error);
-            return new WebApplicationException(
-                "Error al buscar usuarios: " + error.getMessage(),
-                Response.Status.INTERNAL_SERVER_ERROR
-            );
+            return new KeycloakSyncException("Error al buscar usuarios", error);
         });
     }
 
@@ -291,19 +269,15 @@ public class UserServiceImpl implements IUserService {
     @WithTransaction
     public Uni<Void> updateProfileImage(String userId, byte[] profileImage) {
         try {
-            UUID userUuid = UUID.fromString(userId);
+            UUID userUuid = UuidValidator.parseUuid(userId);
             
             return userAccountRepository.findById(userUuid)
-                .onItem().ifNull().failWith(new WebApplicationException(
-                    "Usuario con ID '" + userId + "' no encontrado",
-                    Response.Status.NOT_FOUND
-                ))
+                .onItem().ifNull().failWith(new UserNotFoundException(userId))
                 .chain(userAccount -> {
                     // Validar tamaño de imagen (máx 5MB)
                     if (profileImage != null && profileImage.length > 5 * 1024 * 1024) {
-                        return Uni.createFrom().failure(new WebApplicationException(
-                            "La imagen de perfil no puede exceder 5MB",
-                            Response.Status.BAD_REQUEST
+                        return Uni.createFrom().failure(new InvalidUserDataException(
+                            "La imagen de perfil no puede exceder 5MB (tamaño: " + profileImage.length + " bytes)"
                         ));
                     }
                     
@@ -312,20 +286,16 @@ public class UserServiceImpl implements IUserService {
                         .replaceWithVoid();
                 })
                 .onFailure().transform(error -> {
-                    if (error instanceof WebApplicationException) {
+                    if (error instanceof UserNotFoundException ||
+                        error instanceof InvalidUserDataException ||
+                        error instanceof KeycloakSyncException) {
                         return error;
                     }
-                    log.error("Error al actualizar imagen de perfil: {}", userId, error);
-                    return new WebApplicationException(
-                        "Error al actualizar imagen de perfil: " + error.getMessage(),
-                        Response.Status.INTERNAL_SERVER_ERROR
-                    );
+                    log.error("Error inesperado al actualizar imagen de perfil: {}", userId, error);
+                    return new KeycloakSyncException("Error inesperado al actualizar imagen de perfil", error);
                 });
         } catch (IllegalArgumentException e) {
-            return Uni.createFrom().failure(new WebApplicationException(
-                "ID de usuario inválido: " + userId,
-                Response.Status.BAD_REQUEST
-            ));
+            return Uni.createFrom().failure(new InvalidUserDataException(e.getMessage()));
         }
     }
 
@@ -333,37 +303,176 @@ public class UserServiceImpl implements IUserService {
     @WithSession
     public Uni<byte[]> getProfileImage(String userId) {
         try {
-            UUID userUuid = UUID.fromString(userId);
+            UUID userUuid = UuidValidator.parseUuid(userId);
             
             return userAccountRepository.findById(userUuid)
-                .onItem().ifNull().failWith(new WebApplicationException(
-                    "Usuario con ID '" + userId + "' no encontrado",
-                    Response.Status.NOT_FOUND
-                ))
+                .onItem().ifNull().failWith(new UserNotFoundException(userId))
                 .map(userAccount -> {
                     if (userAccount.getProfileImage() == null || userAccount.getProfileImage().length == 0) {
-                        throw new WebApplicationException(
-                            "El usuario no tiene imagen de perfil",
-                            Response.Status.NOT_FOUND
-                        );
+                        throw new UserNotFoundException("El usuario no tiene imagen de perfil");
                     }
                     return userAccount.getProfileImage();
                 })
                 .onFailure().transform(error -> {
-                    if (error instanceof WebApplicationException) {
+                    if (error instanceof UserNotFoundException ||
+                        error instanceof InvalidUserDataException ||
+                        error instanceof KeycloakSyncException) {
                         return error;
                     }
-                    log.error("Error al obtener imagen de perfil: {}", userId, error);
-                    return new WebApplicationException(
-                        "Error al obtener imagen de perfil: " + error.getMessage(),
-                        Response.Status.INTERNAL_SERVER_ERROR
-                    );
+                    log.error("Error inesperado al obtener imagen de perfil: {}", userId, error);
+                    return new KeycloakSyncException("Error inesperado al obtener imagen de perfil", error);
                 });
         } catch (IllegalArgumentException e) {
-            return Uni.createFrom().failure(new WebApplicationException(
-                "ID de usuario inválido: " + userId,
-                Response.Status.BAD_REQUEST
-            ));
+            return Uni.createFrom().failure(new InvalidUserDataException(e.getMessage()));
         }
+    }
+
+    @Override
+    public Uni<List<UserGroupResponseDto>> assignGroupsToUser(String userId, List<String> groupIds) {
+        return Uni.createFrom().item(() -> {
+            // Validar que el usuario existe
+            userKeycloakRepository.getUserById(userId);
+            
+            // Asignar cada grupo
+            for (String groupId : groupIds) {
+                userKeycloakRepository.assignGroupToUser(userId, groupId);
+            }
+            
+            log.info("Grupos asignados exitosamente al usuario: {}", userId);
+            return userId;
+        })
+        .chain(id -> getUserGroups(id))
+        .onFailure().transform(error -> {
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
+                return error;
+            }
+            log.error("Error inesperado al asignar grupos al usuario: {}", userId, error);
+            return new KeycloakSyncException("Error inesperado al asignar grupos", error);
+        });
+    }
+
+    @Override
+    public Uni<List<UserGroupResponseDto>> removeGroupsFromUser(String userId, List<String> groupIds) {
+        return Uni.createFrom().item(() -> {
+            // Validar que el usuario existe
+            userKeycloakRepository.getUserById(userId);
+            
+            // Remover cada grupo
+            for (String groupId : groupIds) {
+                userKeycloakRepository.removeGroupFromUser(userId, groupId);
+            }
+            
+            log.info("Grupos removidos exitosamente del usuario: {}", userId);
+            return userId;
+        })
+        .chain(id -> getUserGroups(id))
+        .onFailure().transform(error -> {
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
+                return error;
+            }
+            log.error("Error inesperado al remover grupos del usuario: {}", userId, error);
+            return new KeycloakSyncException("Error inesperado al remover grupos", error);
+        });
+    }
+
+    @Override
+    public Uni<List<UserGroupResponseDto>> getUserGroups(String userId) {
+        return Uni.createFrom().item(() -> {
+            var groups = userKeycloakRepository.getUserGroups(userId);
+            return groups.stream()
+                .map(group -> new UserGroupResponseDto(
+                    group.getId(),
+                    group.getName(),
+                    group.getPath()
+                ))
+                .collect(Collectors.toList());
+        })
+        .onFailure().transform(error -> {
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
+                return error;
+            }
+            log.error("Error inesperado al obtener grupos del usuario: {}", userId, error);
+            return new KeycloakSyncException("Error inesperado al obtener grupos", error);
+        });
+    }
+
+    @Override
+    public Uni<List<UserRoleResponseDto>> assignRolesToUser(String userId, List<String> roleNames) {
+        return Uni.createFrom().item(() -> {
+            // Validar que el usuario existe
+            userKeycloakRepository.getUserById(userId);
+            
+            // Asignar cada rol
+            for (String roleName : roleNames) {
+                userKeycloakRepository.assignRoleToUser(userId, roleName);
+            }
+            
+            log.info("Roles asignados exitosamente al usuario: {}", userId);
+            return userId;
+        })
+        .chain(id -> getUserRoles(id))
+        .onFailure().transform(error -> {
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
+                return error;
+            }
+            log.error("Error inesperado al asignar roles al usuario: {}", userId, error);
+            return new KeycloakSyncException("Error inesperado al asignar roles", error);
+        });
+    }
+
+    @Override
+    public Uni<List<UserRoleResponseDto>> removeRolesFromUser(String userId, List<String> roleNames) {
+        return Uni.createFrom().item(() -> {
+            // Validar que el usuario existe
+            userKeycloakRepository.getUserById(userId);
+            
+            // Remover cada rol
+            for (String roleName : roleNames) {
+                userKeycloakRepository.removeRoleFromUser(userId, roleName);
+            }
+            
+            log.info("Roles removidos exitosamente del usuario: {}", userId);
+            return userId;
+        })
+        .chain(id -> getUserRoles(id))
+        .onFailure().transform(error -> {
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
+                return error;
+            }
+            log.error("Error inesperado al remover roles del usuario: {}", userId, error);
+            return new KeycloakSyncException("Error inesperado al remover roles", error);
+        });
+    }
+
+    @Override
+    public Uni<List<UserRoleResponseDto>> getUserRoles(String userId) {
+        return Uni.createFrom().item(() -> {
+            var roles = userKeycloakRepository.getUserRoles(userId);
+            return roles.stream()
+                .map(role -> new UserRoleResponseDto(
+                    role.getName(),
+                    role.getDescription()
+                ))
+                .collect(Collectors.toList());
+        })
+        .onFailure().transform(error -> {
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
+                return error;
+            }
+            log.error("Error inesperado al obtener roles del usuario: {}", userId, error);
+            return new KeycloakSyncException("Error inesperado al obtener roles", error);
+        });
     }
 }

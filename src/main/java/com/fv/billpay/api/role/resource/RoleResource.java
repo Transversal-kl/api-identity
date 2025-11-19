@@ -25,14 +25,14 @@ public class RoleResource {
     IRoleService service;
 
     @POST
-    @RolesAllowed({"admin", "role-manager", "billpay_user_update"})
+    @RolesAllowed({"admin_role"})
     public Response create(@Valid @ConvertGroup(to = RoleRequestDto.CreateValidation.class) RoleRequestDto dto) {
         return Process.ok(service.create(dto));
     }
 
     @PUT
     @Path("/{roleName}")
-    @RolesAllowed({"admin", "role-manager", "billpay_user_update"})
+    @RolesAllowed({"admin_role"})
     public Response update(
             @PathParam("roleName")
             @NotBlank(message = "El nombre del rol es requerido")
@@ -44,7 +44,7 @@ public class RoleResource {
 
     @DELETE
     @Path("/{roleName}")
-    @RolesAllowed({"admin", "billpay_user_update"})
+    @RolesAllowed({"admin_role"})
     public Response delete(
             @PathParam("roleName")
             @NotBlank(message = "El nombre del rol es requerido")
@@ -57,7 +57,7 @@ public class RoleResource {
 
     @GET
     @Path("/{roleName}")
-    @RolesAllowed({"admin", "role-manager", "viewer", "billpay_user_update"})
+    @RolesAllowed({"admin_role"})
     public Response getById(
             @PathParam("roleName")
             @NotBlank(message = "El nombre del rol es requerido")
@@ -67,7 +67,7 @@ public class RoleResource {
     }
 
     @GET
-    @RolesAllowed({"admin", "role-manager", "viewer", "billpay_user_update"})
+    @RolesAllowed({"admin_role"})
     public Response getAll(
             @QueryParam("page") @DefaultValue("0") @Min(value = 0, message = "La página debe ser mayor o igual a 0") int page,
             @QueryParam("size") @DefaultValue("10") @Min(value = 1, message = "El tamaño debe ser al menos 1") @Max(value = 100, message = "El tamaño máximo es 100") int size) {

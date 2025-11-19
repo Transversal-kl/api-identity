@@ -25,14 +25,14 @@ public class GroupResource {
     IGroupService service;
 
     @POST
-    @RolesAllowed({"admin", "role-manager", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response create(@Valid @ConvertGroup(to = GroupRequestDto.CreateValidation.class) GroupRequestDto dto) {
         return Process.ok(service.create(dto));
     }
 
     @PUT
     @Path("/{groupId}")
-    @RolesAllowed({"admin", "role-manager", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response update(
             @PathParam("groupId")
             @NotBlank(message = "El ID del grupo es requerido")
@@ -43,7 +43,7 @@ public class GroupResource {
 
     @DELETE
     @Path("/{groupId}")
-    @RolesAllowed({"admin", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response delete(
             @PathParam("groupId")
             @NotBlank(message = "El ID del grupo es requerido")
@@ -55,7 +55,7 @@ public class GroupResource {
 
     @GET
     @Path("/{groupId}")
-    @RolesAllowed({"admin", "role-manager", "viewer", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response getById(
             @PathParam("groupId")
             @NotBlank(message = "El ID del grupo es requerido")
@@ -65,7 +65,7 @@ public class GroupResource {
 
     @GET
     @Path("/name/{groupName}")
-    @RolesAllowed({"admin", "role-manager", "viewer", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response getByName(
             @PathParam("groupName")
             @NotBlank(message = "El nombre del grupo es requerido")
@@ -75,7 +75,7 @@ public class GroupResource {
     }
 
     @GET
-    @RolesAllowed({"admin", "role-manager", "viewer", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response getAll(
             @QueryParam("page") @DefaultValue("0") @Min(value = 0, message = "La página debe ser mayor o igual a 0") int page,
             @QueryParam("size") @DefaultValue("10") @Min(value = 1, message = "El tamaño debe ser al menos 1") @Max(value = 100, message = "El tamaño máximo es 100") int size) {

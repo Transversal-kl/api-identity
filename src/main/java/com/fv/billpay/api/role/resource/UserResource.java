@@ -38,7 +38,7 @@ public class UserResource {
     IUserService userService;
 
     @POST
-    @RolesAllowed({"admin", "billpay_user_update"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Crear usuario", description = "Crea un usuario en Keycloak y lo sincroniza con PostgreSQL")
     @APIResponse(responseCode = "201", description = "Usuario creado exitosamente")
     @APIResponse(responseCode = "400", description = "Datos de entrada inválidos")
@@ -51,7 +51,7 @@ public class UserResource {
 
     @PUT
     @Path("/{userId}")
-    @RolesAllowed({"admin", "billpay_user_update"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Actualizar usuario", description = "Actualiza un usuario en Keycloak y PostgreSQL")
     @APIResponse(responseCode = "200", description = "Usuario actualizado exitosamente")
     @APIResponse(responseCode = "400", description = "Datos de entrada inválidos")
@@ -67,7 +67,7 @@ public class UserResource {
 
     @DELETE
     @Path("/{userId}")
-    @RolesAllowed({"admin", "billpay_user_update"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Eliminar usuario", description = "Elimina un usuario de Keycloak y PostgreSQL")
     @APIResponse(responseCode = "200", description = "Usuario eliminado exitosamente")
     @APIResponse(responseCode = "404", description = "Usuario no encontrado")
@@ -81,7 +81,7 @@ public class UserResource {
 
     @GET
     @Path("/{userId}")
-    @RolesAllowed({"admin", "billpay_user_update", "viewer"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Obtener usuario por ID", description = "Obtiene la información de un usuario")
     @APIResponse(
         responseCode = "200",
@@ -98,7 +98,7 @@ public class UserResource {
     }
 
     @GET
-    @RolesAllowed({"admin", "billpay_user_update", "viewer"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Listar usuarios", description = "Obtiene todos los usuarios con paginación")
     @APIResponse(
         responseCode = "200",
@@ -117,7 +117,7 @@ public class UserResource {
 
     @GET
     @Path("/search")
-    @RolesAllowed({"admin", "billpay_user_update", "viewer"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Buscar usuarios", description = "Busca usuarios por username")
     @APIResponse(
         responseCode = "200",
@@ -135,7 +135,7 @@ public class UserResource {
     @PUT
     @Path("/{userId}/profile-image")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
-    @RolesAllowed({"admin", "billpay_user_update"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Actualizar imagen de perfil", description = "Actualiza la imagen de perfil de un usuario")
     @APIResponse(responseCode = "200", description = "Imagen actualizada exitosamente")
     @APIResponse(responseCode = "400", description = "Imagen inválida o muy grande")
@@ -172,7 +172,7 @@ public class UserResource {
     @GET
     @Path("/{userId}/profile-image")
     @Produces({"image/jpeg", "image/png", "image/gif"})
-    @RolesAllowed({"admin", "billpay_user_update", "viewer"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Obtener imagen de perfil", description = "Obtiene la imagen de perfil de un usuario")
     @APIResponse(responseCode = "200", description = "Imagen de perfil")
     @APIResponse(responseCode = "404", description = "Usuario o imagen no encontrada")
@@ -186,7 +186,7 @@ public class UserResource {
 
     @DELETE
     @Path("/{userId}/profile-image")
-    @RolesAllowed({"admin", "billpay_user_update"})
+    @RolesAllowed({"admin_users"})
     @Operation(summary = "Eliminar imagen de perfil", description = "Elimina la imagen de perfil de un usuario")
     @APIResponse(responseCode = "200", description = "Imagen eliminada exitosamente")
     @APIResponse(responseCode = "404", description = "Usuario no encontrado")

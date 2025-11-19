@@ -2,6 +2,8 @@ package com.fv.billpay.api.role.repository;
 
 import com.fv.billpay.api.role.dto.request.UserRequestDto;
 import com.fv.billpay.api.role.dto.request.UserUpdateDto;
+import org.keycloak.representations.idm.GroupRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 
 import java.util.List;
@@ -45,4 +47,34 @@ public interface IUserKeycloakRepository {
      * Verifica si un usuario existe en Keycloak.
      */
     boolean userExists(String userId);
+
+    /**
+     * Asigna un grupo a un usuario en Keycloak.
+     */
+    void assignGroupToUser(String userId, String groupId);
+
+    /**
+     * Remueve un grupo de un usuario en Keycloak.
+     */
+    void removeGroupFromUser(String userId, String groupId);
+
+    /**
+     * Obtiene los grupos asignados a un usuario en Keycloak.
+     */
+    List<GroupRepresentation> getUserGroups(String userId);
+
+    /**
+     * Asigna un rol realm a un usuario en Keycloak.
+     */
+    void assignRoleToUser(String userId, String roleName);
+
+    /**
+     * Remueve un rol realm de un usuario en Keycloak.
+     */
+    void removeRoleFromUser(String userId, String roleName);
+
+    /**
+     * Obtiene los roles realm asignados a un usuario en Keycloak.
+     */
+    List<RoleRepresentation> getUserRoles(String userId);
 }

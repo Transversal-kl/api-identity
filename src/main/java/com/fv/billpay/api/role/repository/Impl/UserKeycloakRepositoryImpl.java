@@ -12,10 +12,15 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
+import org.keycloak.admin.client.resource.RolesResource;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.GroupRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -219,6 +224,125 @@ public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
         } catch (Exception e) {
             log.error("Error al establecer contraseña para usuario: {}", userId, e);
             throw new KeycloakSyncException("Error al establecer contraseña", e);
+        }
+    }
+
+    @Override
+    public void assignGroupToUser(String userId, String groupId) {
+        try {
+            UsersResource usersResource = getUsersResource();
+            UserResource userResource = usersResource.get(userId);
+            
+            userResource.joinGroup(groupId);
+            
+            log.info("Grupo '{}' asignado exitosamente al usuario: {}", groupId, userId);
+        } catch (NotFoundException e) {
+            log.error("Usuario o grupo no encontrado: userId={}, groupId={}", userId, groupId);
+            throw new UserNotFoundException("Usuario o grupo no encontrado");
+        } catch (Exception e) {
+            log.error("Error al asignar grupo al usuario: userId={}, groupId={}", userId, groupId, e);
+            throw new KeycloakSyncException("Error al asignar grupo al usuario", e);
+        }
+    }
+
+    @Override
+    public void removeGroupFromUser(String userId, String groupId) {
+        try {
+            UsersResource usersResource = getUsersResource();
+            UserResource userResource = usersResource.get(userId);
+            
+            userResource.leaveGroup(groupId);
+            
+            log.info("Grupo '{}' removido exitosamente del usuario: {}", groupId, userId);
+        } catch (NotFoundException e) {
+            log.error("Usuario o grupo no encontrado: userId={}, groupId={}", userId, groupId);
+            throw new UserNotFoundException("Usuario o grupo no encontrado");
+        } catch (Exception e) {
+            log.error("Error al remover grupo del usuario: userId={}, groupId={}", userId, groupId, e);
+            throw new KeycloakSyncException("Error al remover grupo del usuario", e);
+        }
+    }
+
+    @Override
+    public List<GroupRepresentation> getUserGroups(String userId) {
+        try {
+            UsersResource usersResource = getUsersResource();
+            UserResource userResource = usersResource.get(userId);
+            
+            List<GroupRepresentation> groups = userResource.groups();
+            log.debug("Obtenidos {} grupos para usuario: {}", groups.size(), userId);
+            return groups;
+        } catch (NotFoundException e) {
+            log.error("Usuario no encontrado: {}", userId);
+            throw new UserNotFoundException(userId);
+        } catch (Exception e) {
+            log.error("Error al obtener grupos del usuario: {}", userId, e);
+            throw new KeycloakSyncException("Error al obtener grupos del usuario", e);
+        }
+    }
+
+    @Override
+    public void assignRoleToUser(String userId, String roleName) {
+        try {
+            UsersResource usersResource = getUsersResource();
+            UserResource userResource = usersResource.get(userId);
+            RolesResource rolesResource = keycloakAdminProvider.getRolesResource();
+            
+            // Obtener el rol
+            RoleRepresentation role = rolesResource.get(roleName).toRepresentation();
+            
+            // Asignar rol realm al usuario
+            userResource.roles().realmLevel().add(Collections.singletonList(role));
+            
+            log.info("Rol '{}' asignado exitosamente al usuario: {}", roleName, userId);
+        } catch (NotFoundException e) {
+            log.error("Usuario o rol no encontrado: userId={}, roleName={}", userId, roleName);
+            throw new UserNotFoundException("Usuario o rol no encontrado");
+        } catch (Exception e) {
+            log.error("Error al asignar rol al usuario: userId={}, roleName={}", userId, roleName, e);
+            throw new KeycloakSyncException("Error al asignar rol al usuario", e);
+        }
+    }
+
+    @Override
+    public void removeRoleFromUser(String userId, String roleName) {
+        try {
+            UsersResource usersResource = getUsersResource();
+            UserResource userResource = usersResource.get(userId);
+            RolesResource rolesResource = keycloakAdminProvider.getRolesResource();
+            
+            // Obtener el rol
+            RoleRepresentation role = rolesResource.get(roleName).toRepresentation();
+            
+            // Remover rol realm del usuario
+            userResource.roles().realmLevel().remove(Collections.singletonList(role));
+            
+            log.info("Rol '{}' removido exitosamente del usuario: {}", roleName, userId);
+        } catch (NotFoundException e) {
+            log.error("Usuario o rol no encontrado: userId={}, roleName={}", userId, roleName);
+            throw new UserNotFoundException("Usuario o rol no encontrado");
+        } catch (Exception e) {
+            log.error("Error al remover rol del usuario: userId={}, roleName={}", userId, roleName, e);
+            throw new KeycloakSyncException("Error al remover rol del usuario", e);
+        }
+    }
+
+    @Override
+    public List<RoleRepresentation> getUserRoles(String userId) {
+        try {
+            UsersResource usersResource = getUsersResource();
+            UserResource userResource = usersResource.get(userId);
+            
+            // Obtener roles realm asignados al usuario
+            List<RoleRepresentation> roles = userResource.roles().realmLevel().listAll();
+            log.debug("Obtenidos {} roles para usuario: {}", roles.size(), userId);
+            return roles;
+        } catch (NotFoundException e) {
+            log.error("Usuario no encontrado: {}", userId);
+            throw new UserNotFoundException(userId);
+        } catch (Exception e) {
+            log.error("Error al obtener roles del usuario: {}", userId, e);
+            throw new KeycloakSyncException("Error al obtener roles del usuario", e);
         }
     }
 }

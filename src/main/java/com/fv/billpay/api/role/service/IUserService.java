@@ -2,7 +2,9 @@ package com.fv.billpay.api.role.service;
 
 import com.fv.billpay.api.role.dto.request.UserRequestDto;
 import com.fv.billpay.api.role.dto.request.UserUpdateDto;
+import com.fv.billpay.api.role.dto.response.UserGroupResponseDto;
 import com.fv.billpay.api.role.dto.response.UserResponseDto;
+import com.fv.billpay.api.role.dto.response.UserRoleResponseDto;
 import io.smallrye.mutiny.Uni;
 
 import java.util.List;
@@ -51,4 +53,34 @@ public interface IUserService {
      * Obtiene la imagen de perfil de un usuario.
      */
     Uni<byte[]> getProfileImage(String userId);
+
+    /**
+     * Asigna grupos a un usuario.
+     */
+    Uni<List<UserGroupResponseDto>> assignGroupsToUser(String userId, List<String> groupIds);
+
+    /**
+     * Remueve grupos de un usuario.
+     */
+    Uni<List<UserGroupResponseDto>> removeGroupsFromUser(String userId, List<String> groupIds);
+
+    /**
+     * Obtiene los grupos de un usuario.
+     */
+    Uni<List<UserGroupResponseDto>> getUserGroups(String userId);
+
+    /**
+     * Asigna roles a un usuario.
+     */
+    Uni<List<UserRoleResponseDto>> assignRolesToUser(String userId, List<String> roleNames);
+
+    /**
+     * Remueve roles de un usuario.
+     */
+    Uni<List<UserRoleResponseDto>> removeRolesFromUser(String userId, List<String> roleNames);
+
+    /**
+     * Obtiene los roles de un usuario.
+     */
+    Uni<List<UserRoleResponseDto>> getUserRoles(String userId);
 }

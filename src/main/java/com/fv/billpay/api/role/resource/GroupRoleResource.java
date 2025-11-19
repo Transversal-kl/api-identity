@@ -31,7 +31,7 @@ public class GroupRoleResource {
      * POST /groups/{groupId}/roles
      */
     @POST
-    @RolesAllowed({"admin", "role-manager", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response assignRolesToGroup(
             @PathParam("groupId")
             @NotBlank(message = "El ID del grupo es requerido")
@@ -46,7 +46,7 @@ public class GroupRoleResource {
      * DELETE /groups/{groupId}/roles
      */
     @DELETE
-    @RolesAllowed({"admin", "role-manager", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response removeRolesFromGroup(
             @PathParam("groupId")
             @NotBlank(message = "El ID del grupo es requerido")
@@ -61,7 +61,7 @@ public class GroupRoleResource {
      * GET /groups/{groupId}/roles
      */
     @GET
-    @RolesAllowed({"admin", "role-manager", "viewer", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response getGroupRoles(
             @PathParam("groupId")
             @NotBlank(message = "El ID del grupo es requerido")
@@ -76,7 +76,7 @@ public class GroupRoleResource {
      */
     @GET
     @Path("/available")
-    @RolesAllowed({"admin", "role-manager", "viewer", "billpay_user_update"})
+    @RolesAllowed({"admin_groups"})
     public Response getAvailableRoles(
             @PathParam("groupId")
             @NotBlank(message = "El ID del grupo es requerido")
