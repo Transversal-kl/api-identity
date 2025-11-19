@@ -1,1122 +1,1531 @@
-# Análisis del Sistema: API de Gestión de Roles (api-role)
+# Documentación Técnica y Funcional - API Identity
 
-## 1. Resumen Ejecutivo
-
-**api-role** es un microservicio REST desarrollado con Quarkus que proporciona capacidades CRUD para la gestión de roles en un sistema de pago de facturas (BillPay). El sistema actúa como una capa de abstracción sobre Keycloak, delegando toda la persistencia y administración de roles al servidor de identidades.
-
-### Hallazgos Clave:
-- **Arquitectura de microservicio sin estado:** No mantiene base de datos propia, delegando completamente a Keycloak
-- **Vulnerabilidad crítica de seguridad:** Credenciales de administrador hardcodeadas en archivos de configuración
-- **Código legacy no utilizado:** Queries SQL en `Constants.java` que nunca se ejecutan
-- **API REST bien estructurada** con validaciones y respuestas estandarizadas
+**Proyecto:** api-identity  
+**Repositorio:** Transversal-kl/api-identity  
+**Rama:** Master  
+**Fecha de Análisis:** 19 de noviembre de 2025  
+**Versión:** 1.0.0-SNAPSHOT
 
 ---
 
-## 2. Arquitectura y Tecnologías
+## Tabla de Contenidos
 
-### Stack Tecnológico
+1. [Resumen Ejecutivo](#resumen-ejecutivo)
+2. [Stack Tecnológico](#stack-tecnológico)
+3. [Arquitectura del Sistema](#arquitectura-del-sistema)
+4. [Integraciones y Dependencias](#integraciones-y-dependencias)
+5. [Modelo de Datos](#modelo-de-datos)
+6. [Lógica de Negocio](#lógica-de-negocio)
+7. [Endpoints de API](#endpoints-de-api)
+8. [Seguridad](#seguridad)
+9. [Análisis de Vulnerabilidades](#análisis-de-vulnerabilidades)
+10. [Frontend](#frontend)
+11. [Recomendaciones](#recomendaciones)
+
+---
+
+## Resumen Ejecutivo
+
+**api-identity** es una API de gestión de identidad y control de acceso (IAM - Identity and Access Management) construida con Quarkus 3.26.1. El sistema proporciona funcionalidades completas de CRUD para usuarios, roles, grupos y permisos, con sincronización bidireccional entre Keycloak (servidor de autenticación y autorización) y PostgreSQL (base de datos relacional).
+
+### Propósito del Sistema
+
+El sistema actúa como una capa de abstracción y sincronización entre:
+- **Keycloak**: Gestión de identidades, autenticación OAuth2/OIDC, y autorización basada en roles
+- **PostgreSQL**: Persistencia de información extendida de usuarios y datos de perfil
+
+### Características Principales
+
+✅ **Gestión de Usuarios**: CRUD completo, búsqueda, gestión de imágenes de perfil  
+✅ **Gestión de Roles**: Creación, actualización y eliminación de roles de realm  
+✅ **Gestión de Grupos**: Organización jerárquica de usuarios  
+✅ **Asignación de Permisos**: Roles a usuarios, roles a grupos, grupos a usuarios  
+✅ **Sincronización Dual**: Keycloak ↔ PostgreSQL en tiempo real  
+✅ **Arquitectura Reactiva**: Alto rendimiento con programación no bloqueante  
+✅ **Seguridad**: Autenticación JWT con OIDC  
+✅ **Documentación**: OpenAPI/Swagger integrado  
+
+---
+
+## Stack Tecnológico
+
+### Lenguaje y Framework
 
 | Componente | Tecnología | Versión |
-|------------|------------|---------|
-| **Framework Backend** | Quarkus | 3.26.1 |
+|------------|-----------|---------|
 | **Lenguaje** | Java | 21 |
-| **Build Tool** | Maven | - |
-| **API REST** | Quarkus REST (JAX-RS) | - |
-| **Serialización JSON** | Jackson | - |
-| **Autenticación** | OIDC (OpenID Connect) | - |
-| **Validación** | Hibernate Validator | - |
-| **Documentación API** | SmallRye OpenAPI | - |
-| **Cliente Admin** | Keycloak Admin Client | 22.0.5 |
-| **Servidor de Identidades** | Keycloak Server | 26.3.3 |
-| **Utilidades** | Lombok | 1.18.32 |
+| **Framework** | Quarkus | 3.26.1 |
+| **Gestor de Dependencias** | Maven | 3.x |
+| **Compilador** | Maven Compiler Plugin | 3.14.0 |
 
-### Arquitectura de Capas
+### Dependencias Principales
 
-```
-┌─────────────────────────────────────────────────┐
-│        RoleResource (REST Controller)           │
-│              /roles endpoints                   │
-└────────────────────┬────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────┐
-│     IRoleService / RoleServiceImpl              │
-│        (Lógica de Negocio)                      │
-└────────────────────┬────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────┐
-│   IRoleRepository / RoleRepositoryImpl          │
-│        (Acceso a Keycloak)                      │
-└────────────────────┬────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────┐
-│       KeycloakAdminProvider                     │
-│     (Cliente HTTP a Keycloak)                   │
-└────────────────────┬────────────────────────────┘
-                     │
-                     ▼
-            ┌────────────────┐
-            │  Keycloak      │
-            │  Server        │
-            │  (Puerto 8083) │
-            └────────────────┘
-```
+#### Core Quarkus
+- **quarkus-arc**: Inyección de dependencias (CDI)
+- **quarkus-rest**: JAX-RS RESTful endpoints
+- **quarkus-rest-jackson**: Serialización/deserialización JSON
+- **quarkus-smallrye-openapi**: Documentación OpenAPI 3.0
 
-### Patrones de Diseño Implementados
+#### Persistencia y Datos
+- **quarkus-hibernate-reactive-panache**: ORM reactivo con patrón Active Record
+- **quarkus-reactive-pg-client**: Cliente reactivo de PostgreSQL
+- **Database**: PostgreSQL (reactivo)
 
-1. **Repository Pattern:** Abstracción del acceso a Keycloak
-2. **DTO Pattern:** Separación entre objetos de transferencia (Request/Response) y representaciones internas
-3. **Dependency Injection:** Jakarta CDI para inyección de dependencias
-4. **Provider Pattern:** `KeycloakAdminProvider` centraliza la configuración del cliente
-5. **Exception Mapper:** Manejo centralizado de excepciones con `GlobalExceptionMapper`
+#### Seguridad
+- **quarkus-oidc**: Autenticación OAuth2/OpenID Connect
+- **keycloak-admin-client**: Cliente administrativo de Keycloak (26.0.0)
+- **quarkus-hibernate-validator**: Validación de beans (Bean Validation)
+
+#### Utilidades
+- **lombok**: Reducción de código boilerplate (1.18.32)
+- **smallrye-mutiny**: Programación reactiva
+
+### Arquitectura de Despliegue
+
+El proyecto incluye múltiples opciones de Dockerfiles:
+- `Dockerfile.jvm`: Imagen JVM tradicional
+- `Dockerfile.legacy-jar`: Imagen con JAR legacy
+- `Dockerfile.native`: Compilación nativa con GraalVM
+- `Dockerfile.native-micro`: Imagen nativa ultra-ligera
 
 ---
 
-## 3. Módulos Funcionales Identificados
+## Arquitectura del Sistema
 
-### 3.1. Módulo de Gestión de Roles
+### Patrón Arquitectónico
 
-**Propósito:** Proveer operaciones CRUD para roles en el contexto de autenticación/autorización del sistema BillPay.
+El sistema implementa una **arquitectura en capas** con el patrón **Repository-Service-Resource**:
 
-**Funcionalidades:**
-
-#### a. Creación de Roles
-- **Endpoint:** `POST /roles`
-- **Validaciones:**
-  - Nombre obligatorio (3-50 caracteres)
-  - Descripción opcional (max 255 caracteres)
-- **Archivos:** `RoleResource.create()`, `RoleServiceImpl.create()`, `RoleRepositoryImpl.createRole()`
-
-#### b. Actualización de Roles
-- **Endpoint:** `PUT /roles/{roleName}`
-- **Nota:** Los roles se identifican por nombre (no hay ID numérico)
-- **Archivos:** `RoleResource.update()`, `RoleServiceImpl.update()`, `RoleRepositoryImpl.updateRole()`
-
-#### c. Eliminación de Roles
-- **Endpoint:** `DELETE /roles/{rolName}`
-- **Comportamiento:** Eliminación física del rol en Keycloak
-- **Archivos:** `RoleResource.delete()`, `RoleServiceImpl.delete()`, `RoleRepositoryImpl.deleteRole()`
-
-#### d. Consulta de Roles
-- **Endpoints:**
-  - `GET /roles/{rolName}` - Consulta individual
-  - `GET /roles?page=0&size=10` - Listado paginado
-- **Nota:** El método `count()` está sin implementar
-- **Archivos:** `RoleResource.getById()`, `RoleResource.getAll()`, `RoleRepositoryImpl.getRole()`, `RoleRepositoryImpl.getAllRoles()`
-
-### 3.2. Módulo de Gestión de Grupos
-
-**Propósito:** Proveer operaciones CRUD para grupos en el contexto de autenticación/autorización del sistema BillPay.
-
-**Funcionalidades:**
-
-#### a. Creación de Grupos
-- **Endpoint:** `POST /groups`
-- **Validaciones:**
-  - Nombre obligatorio (3-50 caracteres)
-  - Descripción opcional (max 255 caracteres)
-- **Archivos:** `GroupResource.create()`, `GroupServiceImpl.create()`, `GroupRepositoryImpl.createGroup()`
-- **Nota:** Keycloak genera automáticamente un UUID como ID del grupo
-
-#### b. Actualización de Grupos
-- **Endpoint:** `PUT /groups/{groupId}`
-- **Nota:** Los grupos se identifican por ID (UUID), diferente a los roles que usan nombre
-- **Archivos:** `GroupResource.update()`, `GroupServiceImpl.update()`, `GroupRepositoryImpl.updateGroup()`
-
-#### c. Eliminación de Grupos
-- **Endpoint:** `DELETE /groups/{groupId}`
-- **Comportamiento:** Eliminación física del grupo en Keycloak
-- **Archivos:** `GroupResource.delete()`, `GroupServiceImpl.delete()`, `GroupRepositoryImpl.deleteGroup()`
-
-#### d. Consulta de Grupos
-- **Endpoints:**
-  - `GET /groups/{groupId}` - Consulta por ID
-  - `GET /groups/name/{groupName}` - Consulta por nombre
-  - `GET /groups?page=0&size=10` - Listado paginado
-- **Archivos:** `GroupResource.getById()`, `GroupResource.getByName()`, `GroupResource.getAll()`, `GroupRepositoryImpl.getGroup()`, `GroupRepositoryImpl.getGroupByName()`, `GroupRepositoryImpl.getAllGroups()`
-
-#### Diferencias Clave con Roles:
-
-| Aspecto | Roles | Grupos |
-|---------|-------|--------|
-| **Identificador** | Solo `name` (String) | `id` (UUID) + `name` |
-| **Descripción** | Campo directo en `RoleRepresentation` | Almacenada en `attributes.description` (Map) |
-| **Búsqueda** | Solo por nombre | Por ID o por nombre |
-| **Paginación API** | `roles.list(first, max)` | `groups.groups(first, max)` |
-| **Count** | `list().size()` | `count().get("count")` retorna Long |
-
-### 3.3. Módulo de Gestión de Roles en Grupos
-
-Este módulo permite asignar y gestionar roles dentro de grupos en Keycloak.
-
-**Archivos involucrados:**
-- `GroupRoleRequestDto.java` - DTO para asignar/desasignar roles
-- `GroupRoleResponseDto.java` - DTO de respuesta con información del rol
-- `GroupRoleMapper.java` - Conversión de `RoleRepresentation` a DTO
-- `IGroupRoleRepository.java` - Interface del repositorio
-- `GroupRoleRepositoryImpl.java` - Implementación con Keycloak Admin API
-- `IGroupRoleService.java` - Interface del servicio
-- `GroupRoleServiceImpl.java` - Lógica de negocio y validaciones
-- `GroupRoleResource.java` - Endpoints REST independientes
-
-#### a. Asignación de Roles a Grupos
-- **Endpoint:** `POST /groups/{groupId}/roles`
-- **Request Body:** `GroupRoleRequestDto` con lista de nombres de roles
-- **Comportamiento:** Asigna múltiples roles realm a un grupo
-- **Archivos:** `GroupRoleResource.assignRolesToGroup()`, `GroupRoleServiceImpl.assignRolesToGroup()`, `GroupRoleRepositoryImpl.assignRoleToGroup()`
-
-#### b. Desasignación de Roles de Grupos
-- **Endpoint:** `DELETE /groups/{groupId}/roles`
-- **Request Body:** `GroupRoleRequestDto` con lista de nombres de roles
-- **Comportamiento:** Remueve múltiples roles realm de un grupo
-- **Archivos:** `GroupRoleResource.removeRolesFromGroup()`, `GroupRoleServiceImpl.removeRolesFromGroup()`, `GroupRoleRepositoryImpl.removeRoleFromGroup()`
-
-#### c. Consulta de Roles Asignados
-- **Endpoint:** `GET /groups/{groupId}/roles`
-- **Response:** Lista de `GroupRoleResponseDto` con roles asignados al grupo
-- **Archivos:** `GroupRoleResource.getGroupRoles()`, `GroupRoleServiceImpl.getGroupRoles()`, `GroupRoleRepositoryImpl.getGroupRoles()`
-
-#### d. Consulta de Roles Disponibles
-- **Endpoint:** `GET /groups/{groupId}/roles/available`
-- **Response:** Lista de `GroupRoleResponseDto` con roles NO asignados al grupo
-- **Archivos:** `GroupRoleResource.getAvailableRoles()`, `GroupRoleServiceImpl.getAvailableRoles()`, `GroupRoleRepositoryImpl.getAvailableRoles()`
-
-#### Características Técnicas:
-
-| Aspecto | Implementación |
-|---------|----------------|
-| **API Keycloak** | `GroupResource.roles().realmLevel()` |
-| **Asignación** | `realmRoles.add(List<RoleRepresentation>)` |
-| **Desasignación** | `realmRoles.remove(List<RoleRepresentation>)` |
-| **Consulta asignados** | `realmRoles.listAll()` |
-| **Validación** | Verifica existencia del grupo antes de operar |
-| **Manejo de errores** | Reporta roles fallidos en WebApplicationException |
-| **Seguridad** | `@RolesAllowed` en todos los endpoints |
-
-### 3.4. Módulo de Utilidades
-
-**Componentes:**
-
-#### a. Respuestas Estandarizadas (`Process.java`)
-```java
-{
-  "status": "success" | "error" | "not_found",
-  "data": <payload>
-}
+```
+┌─────────────────────────────────────────┐
+│         Capa de Presentación            │
+│    (Resources - JAX-RS Endpoints)       │
+└──────────────┬──────────────────────────┘
+               │
+┌──────────────▼──────────────────────────┐
+│         Capa de Servicio                │
+│    (Services - Lógica de Negocio)       │
+└──────────────┬──────────────────────────┘
+               │
+┌──────────────▼──────────────────────────┐
+│      Capa de Repositorio                │
+│  (Repositories - Acceso a Datos)        │
+└──────┬────────────────────┬─────────────┘
+       │                    │
+┌──────▼──────┐      ┌─────▼─────────┐
+│  PostgreSQL │      │   Keycloak    │
+│  (Reactivo) │      │  Admin API    │
+└─────────────┘      └───────────────┘
 ```
 
-#### b. Mapeo de DTOs (`RoleMapper.java`, `GroupMapper.java`)
-- Conversión de `RoleRepresentation` (Keycloak) → `RoleResponseDto`
-- Conversión de `GroupRepresentation` (Keycloak) → `GroupResponseDto`
-- **Nota:** `GroupMapper` extrae la descripción desde `attributes.get("description")`
+### Estructura de Paquetes
 
-#### c. Constantes (`Constants.java`)
-- ⚠️ **Código Legacy:** Contiene queries SQL que nunca se ejecutan
-- Probable preparación para migración futura a BD relacional
+```
+com.fv.billpay.api.identity/
+├── dto/
+│   ├── request/        # DTOs para peticiones entrantes
+│   │   ├── UserRequestDto.java
+│   │   ├── UserUpdateDto.java
+│   │   ├── RoleRequestDto.java
+│   │   ├── GroupRequestDto.java
+│   │   └── ...
+│   └── response/       # DTOs para respuestas
+│       ├── UserResponseDto.java
+│       ├── RoleResponseDto.java
+│       ├── GroupResponseDto.java
+│       └── PagedResponse.java
+│
+├── entity/             # Entidades JPA (PostgreSQL)
+│   └── UserAccount.java
+│
+├── exception/          # Excepciones personalizadas
+│   ├── GlobalExceptionMapper.java
+│   ├── UserNotFoundException.java
+│   ├── UserAlreadyExistsException.java
+│   ├── InvalidUserDataException.java
+│   └── KeycloakSyncException.java
+│
+├── mapper/             # Conversión entre entidades y DTOs
+│   ├── UserMapper.java
+│   ├── RoleMapper.java
+│   ├── GroupMapper.java
+│   └── GroupRoleMapper.java
+│
+├── repository/         # Acceso a datos
+│   ├── UserAccountRepository.java (PostgreSQL - Reactivo)
+│   ├── IUserKeycloakRepository.java
+│   ├── IRoleRepository.java
+│   ├── IGroupRepository.java
+│   ├── IGroupRoleRepository.java
+│   └── Impl/
+│       ├── UserKeycloakRepositoryImpl.java
+│       ├── RoleRepositoryImpl.java
+│       ├── GroupRepositoryImpl.java
+│       └── GroupRoleRepositoryImpl.java
+│
+├── resource/           # Endpoints REST (Controllers)
+│   ├── UserResource.java
+│   ├── RoleResource.java
+│   ├── GroupResource.java
+│   ├── UserRoleResource.java
+│   ├── UserGroupResource.java
+│   └── GroupRoleResource.java
+│
+├── service/            # Lógica de negocio
+│   ├── IUserService.java
+│   ├── IRoleService.java
+│   ├── IGroupService.java
+│   ├── IGroupRoleService.java
+│   └── Impl/
+│       ├── UserServiceImpl.java
+│       ├── RoleServiceImpl.java
+│       ├── GroupServiceImpl.java
+│       └── GroupRoleServiceImpl.java
+│
+└── utils/              # Utilidades
+    ├── KeycloakAdminProvider.java
+    ├── UuidValidator.java
+    └── Process.java
+```
 
-### 3.4. Módulo de Integración con Keycloak
+### Patrón Reactivo
 
-**Componente:** `KeycloakAdminProvider`
+El sistema utiliza **SmallRye Mutiny** (`Uni` y `Multi`) para programación reactiva no bloqueante:
 
-**Responsabilidades:**
-- Inicialización del cliente Keycloak con autenticación OAuth2 (Grant Type: Client Credentials)
-- Provisión del recurso `RolesResource` para operaciones CRUD de roles
-- Provisión del recurso `GroupsResource` para operaciones CRUD de grupos
-- Retry automático en caso de fallo de conexión
-- Configuración centralizada mediante `@ConfigProperty`
+- **Operaciones de PostgreSQL**: Totalmente reactivas con Hibernate Reactive Panache
+- **Operaciones de Keycloak**: Síncronas (bloqueantes), envueltas en `Uni.createFrom().item()`
+- **Composición**: Uso extensivo de operadores `.chain()`, `.map()`, `.invoke()` para flujos asincrónicos
 
 ---
 
-## 4. Integraciones y Dependencias
+## Integraciones y Dependencias
 
-### a. Bases de Datos
+### 1. Base de Datos - PostgreSQL
 
-**NO HAY CONEXIÓN DIRECTA A BASES DE DATOS**
-
-- El sistema no utiliza JPA, JDBC ni ningún driver de base de datos
-- Toda la persistencia se delega a Keycloak
-- La clase `Constants.java` contiene queries SQL preparatorias que **no se utilizan actualmente**
-
-### b. Servicios Web Consumidos
-
-#### Keycloak Server 26.3.3
-
-| Propiedad | Valor | Propósito |
-|-----------|-------|-----------|
-| **URL** | `http://localhost:8083/` | Servidor de autenticación e identidades |
-| **Realm** | `billpay_app` | Dominio de autenticación del sistema BillPay |
-| **Client ID** | `cli_billpay_app` | Identificador de la aplicación cliente |
-| **Client Secret** | `YGMyRIRzM2qa4hYZFxVVqrSQzRWlrZuB` | Secreto del cliente |
-| **Protocolo** | OIDC (OAuth2 Password Grant) | Autenticación con usuario/contraseña admin |
-| **Admin User** | `kuroroluzbell` | Usuario administrador |
-| **Admin Password** | `123456` | ⚠️ Contraseña débil |
-
-**API Keycloak Utilizada:**
-- `RolesResource` - Gestión de roles del realm
-- `GroupsResource` - Gestión de grupos del realm
-
-### c. Servicios Web Expuestos
-
-#### API REST de Roles
-
-**URL Base:** `http://localhost:8089/roles`
-
-| Método | Endpoint | Descripción | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| `POST` | `/roles` | Crear nuevo rol | `RoleRequestDto` | `RoleResponseDto` |
-| `PUT` | `/roles/{roleName}` | Actualizar rol existente | `RoleRequestDto` | `RoleResponseDto` |
-| `DELETE` | `/roles/{rolName}` | Eliminar rol | - | String (mensaje) |
-| `GET` | `/roles/{rolName}` | Obtener rol por nombre | - | `RoleResponseDto` |
-| `GET` | `/roles?page=0&size=10` | Listar roles paginados | - | `{roles: [], total: 0}` |
-
-**Documentación OpenAPI:**
-- Disponible en: `http://localhost:8089/openapi`
-- Swagger UI: Incluido automáticamente por SmallRye OpenAPI
-
-**DTOs:**
-
-```java
-// Request
-RoleRequestDto {
-  name: String (required, 3-50 chars)
-  description: String (optional, max 255 chars)
-}
-
-// Response
-RoleResponseDto {
-  name: String
-  description: String
-}
-```
-
-#### API REST de Grupos
-
-**URL Base:** `http://localhost:8089/groups`
-
-| Método | Endpoint | Descripción | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| `POST` | `/groups` | Crear nuevo grupo | `GroupRequestDto` | `GroupResponseDto` |
-| `PUT` | `/groups/{groupId}` | Actualizar grupo existente | `GroupRequestDto` | `GroupResponseDto` |
-| `DELETE` | `/groups/{groupId}` | Eliminar grupo | - | String (mensaje) |
-| `GET` | `/groups/{groupId}` | Obtener grupo por ID | - | `GroupResponseDto` |
-| `GET` | `/groups/name/{groupName}` | Obtener grupo por nombre | - | `GroupResponseDto` |
-| `GET` | `/groups?page=0&size=10` | Listar grupos paginados | - | `PagedResponse<GroupResponseDto>` |
-
-**DTOs:**
-
-```java
-// Request
-GroupRequestDto {
-  name: String (required, 3-50 chars)
-  description: String (optional, max 255 chars)
-}
-
-// Response
-GroupResponseDto {
-  id: String (UUID)
-  name: String
-  description: String
-}
-```
-
-#### API REST de Roles en Grupos
-
-**URL Base:** `http://localhost:8089/groups/{groupId}/roles`
-
-| Método | Endpoint | Descripción | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| `POST` | `/groups/{groupId}/roles` | Asignar roles a un grupo | `GroupRoleRequestDto` | `List<GroupRoleResponseDto>` |
-| `DELETE` | `/groups/{groupId}/roles` | Desasignar roles de un grupo | `GroupRoleRequestDto` | String (mensaje) |
-| `GET` | `/groups/{groupId}/roles` | Obtener roles asignados a un grupo | - | `List<GroupRoleResponseDto>` |
-| `GET` | `/groups/{groupId}/roles/available` | Obtener roles disponibles para un grupo | - | `List<GroupRoleResponseDto>` |
-
-**DTOs:**
-
-```java
-// Request
-GroupRoleRequestDto {
-  roleNames: List<String> (required, 1-50 items)
-}
-
-// Response
-GroupRoleResponseDto {
-  id: String
-  name: String
-  description: String
-}
-```
-
----
-
-## 5. Análisis de Seguridad
-
-### 🔴 Vulnerabilidades Críticas
-
-#### 1. Credenciales Hardcodeadas en Texto Plano
-
-**Ubicación:** `src/main/resources/application.properties`
+#### Configuración
 
 ```properties
-keycloak.credentials.secret=YGMyRIRzM2qa4hYZFxVVqrSQzRWlrZuB
-keycloak.admin.username=kuroroluzbell
-keycloak.admin.password=123456
+# PostgreSQL Reactive
+quarkus.datasource.db-kind=postgresql
+quarkus.datasource.username=${DB_USERNAME:postgres}
+quarkus.datasource.password=${DB_PASSWORD:postgres}
+quarkus.datasource.reactive.url=${DB_REACTIVE_URL:postgresql://localhost:5432/billpay_db}
+quarkus.datasource.reactive.max-size=20
+
+# Hibernate Reactive
+quarkus.hibernate-orm.database.generation=update
+quarkus.hibernate-orm.log.sql=true
 ```
 
-**Severidad:** 🔴 **CRÍTICA**
+#### Detalles de Conexión
 
-**Riesgos:**
-- Exposición de credenciales de administrador de Keycloak con privilegios completos
-- Compromiso total del sistema de autenticación si el repositorio es público
-- Violación de estándares de seguridad (OWASP Top 10 - A07:2021 Identification and Authentication Failures)
+- **Tipo**: PostgreSQL (Reactivo)
+- **Base de Datos**: `billpay_db` (por defecto)
+- **Puerto**: 5432
+- **Pool de Conexiones**: Máximo 20 conexiones
+- **Gestión de Esquema**: Actualización automática (`update`)
 
-**Impacto:**
-- Un atacante con acceso a estas credenciales puede:
-  - Crear, modificar o eliminar roles arbitrariamente
-  - Acceder a datos de usuarios en Keycloak
-  - Comprometer todo el sistema de autorización
+#### Tablas
 
-**Recomendaciones:**
+Solo existe **una tabla** en PostgreSQL:
 
-1. **Inmediato:**
-   - Cambiar todas las credenciales expuestas
-   - Rotar el `client secret`
-   - Usar contraseñas robustas (min. 16 caracteres, alfanuméricos + símbolos)
+**Tabla: `user_account`**
+```sql
+CREATE TABLE user_account (
+    id UUID PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255),
+    first_name VARCHAR(25),
+    last_name VARCHAR(25),
+    profile_image BYTEA,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+```
 
-2. **Corto Plazo:**
-   - Migrar secretos a variables de entorno:
-     ```bash
-     export KEYCLOAK_ADMIN_USERNAME=<usuario_seguro>
-     export KEYCLOAK_ADMIN_PASSWORD=<password_complejo>
-     export KEYCLOAK_CLIENT_SECRET=<secret_rotado>
-     ```
-   - Configurar Quarkus para leerlas:
-     ```properties
-     keycloak.admin.username=${KEYCLOAK_ADMIN_USERNAME}
-     keycloak.admin.password=${KEYCLOAK_ADMIN_PASSWORD}
-     keycloak.credentials.secret=${KEYCLOAK_CLIENT_SECRET}
-     ```
+**Nota**: Los roles, grupos y asignaciones se gestionan exclusivamente en Keycloak, no se persisten en PostgreSQL.
 
-3. **Mediano Plazo:**
-   - Implementar gestor de secretos (HashiCorp Vault, AWS Secrets Manager, Azure Key Vault)
-   - Usar autenticación basada en certificados en lugar de usuario/contraseña
+### 2. Servicio Externo - Keycloak Admin API
 
-4. **Largo Plazo:**
-   - Implementar rotación automática de credenciales
-   - Auditoría de accesos al cliente admin de Keycloak
+#### Configuración
 
-#### 2. Contraseña Débil del Administrador
+```properties
+# Keycloak Server
+keycloak.auth-server-url=${KEYCLOAK_URL:http://localhost:8083/}
+keycloak.realm=${KEYCLOAK_REALM:billpay_app}
 
-**Valor:** `123456`
+# Service Account (Client Credentials Grant)
+keycloak.client-id=${KEYCLOAK_CLIENT_ID:cli_billpay_app}
+keycloak.client-secret=${KEYCLOAK_CLIENT_SECRET}
 
-**Severidad:** 🔴 **CRÍTICA**
+# OIDC para autenticación JWT
+quarkus.oidc.enabled=true
+quarkus.oidc.auth-server-url=${KEYCLOAK_URL}realms/${KEYCLOAK_REALM}
+quarkus.oidc.client-id=${KEYCLOAK_CLIENT_ID}
+quarkus.oidc.credentials.secret=${KEYCLOAK_CLIENT_SECRET}
+quarkus.oidc.application-type=service
+```
 
-**Problema:** Esta contraseña está en las listas de las 10 contraseñas más comunes y sería crackeada instantáneamente en un ataque de fuerza bruta.
+#### Tipo de Integración
 
-**Recomendación:** Generar contraseña robusta con generador criptográfico seguro.
+- **Protocolo**: REST HTTP (Keycloak Admin REST API)
+- **Autenticación**: OAuth2 Client Credentials Grant
+- **Grant Type**: `client_credentials`
+- **Cliente**: Service Account con permisos de `realm-management`
 
----
+#### Operaciones con Keycloak
 
-### 🟡 Vulnerabilidades Menores
+El sistema consume las siguientes APIs de Keycloak:
 
-#### 3. Ausencia de Autenticación en Endpoints
+**Usuarios:**
+- `POST /admin/realms/{realm}/users` - Crear usuario
+- `PUT /admin/realms/{realm}/users/{id}` - Actualizar usuario
+- `DELETE /admin/realms/{realm}/users/{id}` - Eliminar usuario
+- `GET /admin/realms/{realm}/users/{id}` - Obtener usuario
+- `GET /admin/realms/{realm}/users` - Listar usuarios
 
-**Observación:** No se detecta configuración de autenticación en los endpoints REST.
+**Roles:**
+- `POST /admin/realms/{realm}/roles` - Crear rol
+- `PUT /admin/realms/{realm}/roles/{roleName}` - Actualizar rol
+- `DELETE /admin/realms/{realm}/roles/{roleName}` - Eliminar rol
+- `GET /admin/realms/{realm}/roles/{roleName}` - Obtener rol
+- `GET /admin/realms/{realm}/roles` - Listar roles
 
-**Riesgo:** Cualquier cliente puede ejecutar operaciones CRUD sobre roles sin autenticarse.
+**Grupos:**
+- `POST /admin/realms/{realm}/groups` - Crear grupo
+- `PUT /admin/realms/{realm}/groups/{id}` - Actualizar grupo
+- `DELETE /admin/realms/{realm}/groups/{id}` - Eliminar grupo
+- `GET /admin/realms/{realm}/groups/{id}` - Obtener grupo
+- `GET /admin/realms/{realm}/groups` - Listar grupos
 
-**Recomendación:**
-- Activar `quarkus-oidc` para proteger endpoints
-- Configurar anotaciones `@RolesAllowed` en `RoleResource`
-- Ejemplo:
-  ```java
-  @RolesAllowed("admin")
-  @POST
-  public Response create(@Valid RoleRequestDto dto) { ... }
-  ```
+**Asignaciones:**
+- `PUT /admin/realms/{realm}/users/{id}/groups/{groupId}` - Asignar grupo a usuario
+- `POST /admin/realms/{realm}/users/{id}/role-mappings/realm` - Asignar roles a usuario
+- `POST /admin/realms/{realm}/groups/{id}/role-mappings/realm` - Asignar roles a grupo
 
-#### 4. Manejo Genérico de Excepciones
+#### Resiliencia
 
-**Ubicación:** `RoleRepositoryImpl` - Bloques `try-catch` que capturan `Exception`
-
-**Problema:** Pérdida de información de debugging y posibles enmascaramientos de errores.
-
-**Recomendación:**
-- Capturar excepciones específicas de Keycloak
-- Loguear errores con detalles
-- Propagar excepciones de negocio personalizadas
-
----
-
-## 6. Modelo de Datos
-
-### Entidades
-
-#### Role (Keycloak RoleRepresentation)
-
-| Campo | Tipo | Descripción | Validación |
-|-------|------|-------------|------------|
-| `name` | String | Nombre único del rol (PK en Keycloak) | Required, 3-50 chars |
-| `description` | String | Descripción del propósito del rol | Optional, max 255 chars |
-
-**Notas:**
-- No hay ID numérico; el nombre actúa como identificador único
-- La entidad es manejada íntegramente por Keycloak
-- No hay relaciones con otras entidades en este microservicio
-
-#### Group (Keycloak GroupRepresentation)
-
-| Campo | Tipo | Descripción | Validación |
-|-------|------|-------------|------------|
-| `id` | String (UUID) | ID único del grupo generado por Keycloak | Auto-generado |
-| `name` | String | Nombre del grupo | Required, 3-50 chars |
-| `description` | String | Descripción almacenada en attributes | Optional, max 255 chars |
-
-**Notas:**
-- El ID (UUID) es generado automáticamente por Keycloak
-- La descripción se almacena en `attributes.put("description", List.of(description))`
-- Búsqueda por nombre requiere iteración (Keycloak no tiene índice por nombre)
-- La entidad es manejada íntegramente por Keycloak
-- No hay relaciones con otras entidades en este microservicio
-
-### DTOs de Roles en Grupos
-
-#### GroupRoleRequestDto
-
-| Campo | Tipo | Descripción | Validación |
-|-------|------|-------------|------------|
-| `roleNames` | List\<String\> | Lista de nombres de roles a asignar/desasignar | Required, @NotEmpty, @Size(min=1, max=50) |
-
-**Uso:** Request para asignar o remover múltiples roles de un grupo
-
-#### GroupRoleResponseDto
-
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `id` | String | ID del rol en Keycloak |
-| `name` | String | Nombre del rol |
-| `description` | String | Descripción del rol |
-
-**Uso:** Response para listar roles asignados o disponibles de un grupo
-
----
-
-## 7. Análisis de Código Legacy
-
-### Archivos del Módulo de Roles en Grupos
-
-**Ubicación:** `src/main/java/com/fv/billpay/api/role/`
-
-#### DTOs (Data Transfer Objects)
-
-**`dto/request/GroupRoleRequestDto.java`**
-- Request DTO para asignar/desasignar roles a grupos
-- Campos: `List<String> roleNames`
-- Validaciones: `@NotEmpty`, `@Size(min=1, max=50)`
-
-**`dto/response/GroupRoleResponseDto.java`**
-- Response DTO para información de roles en grupos
-- Campos: `id`, `name`, `description`
-
-#### Mappers
-
-**`mapper/GroupRoleMapper.java`**
-- Convierte `RoleRepresentation` (Keycloak) a `GroupRoleResponseDto`
-- Mapper estático sin dependencias
-
-#### Repositorio
-
-**`repository/IGroupRoleRepository.java`**
-- Interfaz con 4 métodos: `assignRoleToGroup`, `removeRoleFromGroup`, `getGroupRoles`, `getAvailableRoles`
-
-**`repository/Impl/GroupRoleRepositoryImpl.java`**
-- Implementación usando Keycloak Admin API
-- APIs clave: `RoleMappingResource.realmLevel()` para gestionar roles a nivel realm
-- Logging detallado con `@Slf4j`
-
-#### Servicio
-
-**`service/IGroupRoleService.java`**
-- Interfaz de negocio con 4 métodos
-
-**`service/Impl/GroupRoleServiceImpl.java`**
-- Valida existencia de grupos antes de asignar roles
-- Manejo de errores: colecta roles fallidos y lanza `WebApplicationException`
-- Logging de operaciones
-
-#### Recurso REST
-
-**`resource/GroupRoleResource.java`**
-- Path: `/groups/{groupId}/roles`
-- 4 endpoints: POST, DELETE, GET, GET /available
-- Seguridad: `@RolesAllowed` en todos los endpoints
-- Validación de DTOs con `@Valid`
-
----
-
-## 8. Análisis de Código Legacy
-
-### Código Preparatorio No Utilizado
-
-**Archivo:** `src/main/java/com/fv/billpay/api/role/utils/Constants.java`
+La clase `KeycloakAdminProvider` implementa **retry automático** en caso de fallo de conexión:
 
 ```java
-public static final String SQL_INSERT_ROLE = "INSERT INTO roles (name, description) VALUES (?, ?)";
-public static final String SQL_UPDATE_ROLE = "UPDATE roles SET name = ?, description = ? WHERE id = ?";
-public static final String SQL_DELETE_ROLE = "DELETE FROM roles WHERE id = ?";
-public static final String SQL_SELECT_ROLE_BY_ID = "SELECT id, name, description FROM roles WHERE id = ?";
-public static final String SQL_SELECT_ALL_ROLES = "SELECT id, name, description FROM roles OFFSET ? LIMIT ?";
+public RolesResource getRolesResource() {
+    try {
+        return keycloak.realm(realm).roles();
+    } catch (Exception e) {
+        // Retry con nueva conexión
+        initializeKeycloakClient();
+        return keycloak.realm(realm).roles();
+    }
+}
 ```
 
-**Análisis:**
-- Estas constantes SQL nunca se referencian en el código
-- Sugieren una intención original de usar base de datos relacional
-- Posible preparación para migración futura desde Keycloak a BD propia
+### 3. Servicios Expuestos (API REST)
 
-**Recomendación:**
-- Eliminar el código si no hay plan de migración en el roadmap
-- Si se planea migración, documentar el plan y mantener el código comentado con fecha estimada
+La aplicación expone una **API REST** documentada con OpenAPI 3.0:
 
----
-
-## 8. Mapeo con Capacidades de Negocio
-
-### Contexto del Sistema BillPay
-
-Basándome en el namespace `com.fv.billpay.api.role`, este microservicio es parte de un sistema de pago de facturas (BillPay).
-
-### Módulo del Sistema vs. Capacidades de Negocio
-
-| Módulo del Sistema | Capacidad de Negocio | Cobertura | Notas |
-|--------------------|----------------------|-----------|-------|
-| **Gestión de Roles** | Autenticación y Autorización | ✅ Parcial | Solo gestiona roles, no usuarios ni permisos granulares |
-| | Control de Acceso Basado en Roles (RBAC) | ✅ Completo | CRUD completo de roles |
-| **Gestión de Grupos** | Organización de Usuarios | ✅ Completo | CRUD completo de grupos |
-| | Control de Acceso Basado en Grupos | ✅ Completo | Gestión de grupos para asignación a usuarios |
-| **Roles en Grupos** | Asignación de Permisos a Grupos | ✅ Completo | CRUD de roles en grupos |
-| | Control de Acceso Granular | ✅ Completo | Permite asignar múltiples roles a grupos |
-| | Auditoría de Seguridad | ❌ Fuera de Alcance | No registra logs de auditoría |
-| | Gestión de Usuarios | ❌ Fuera de Alcance | Delegado a otros microservicios |
-
-### Capacidades de Negocio Típicas de un Sistema BillPay (Análisis General)
-
-| Capacidad | Estado | Responsable |
-|-----------|--------|-------------|
-| Gestión de Facturas | ❓ Desconocida | Posible microservicio `api-invoice` |
-| Procesamiento de Pagos | ❓ Desconocida | Posible microservicio `api-payment` |
-| Gestión de Clientes | ❓ Desconocida | Posible microservicio `api-customer` |
-| **Gestión de Roles** | ✅ Implementado | **api-role** (este sistema) |
-| **Gestión de Grupos** | ✅ Implementado | **api-role** (este sistema) |
-| **Roles en Grupos** | ✅ Implementado | **api-role** (este sistema) |
-| Notificaciones | ❓ Desconocida | Posible microservicio `api-notification` |
-| Reportería | ❓ Desconocida | Posible microservicio `api-reports` |
-
-### Recomendaciones de Arquitectura
-
-1. **Integración con otros microservicios:**
-   - Implementar propagación de contexto de seguridad (JWT tokens)
-   - Asegurar que todos los microservicios validen roles contra Keycloak
-
-2. **Evolución del sistema:**
-   - Considerar agregar gestión de permisos granulares (permissions/scopes)
-   - Implementar asignación de roles a usuarios (actualmente solo gestiona definiciones de roles)
-   - ✅ **Completado:** Gestión de roles en grupos para control de acceso más granular
-
-3. **Observabilidad:**
-   - Agregar trazabilidad distribuida (Jaeger, Zipkin)
-   - Implementar métricas de negocio (roles más asignados, operaciones por endpoint)
+- **Puerto**: 8089
+- **Base Path**: `/`
+- **OpenAPI Spec**: `/openapi`
+- **Swagger UI**: `/q/swagger-ui` (solo en modo dev)
+- **Formato**: JSON
+- **Autenticación**: Bearer Token (JWT)
 
 ---
 
-## 9. Análisis de Frontend
+## Modelo de Datos
 
-**Conclusión:** Este proyecto **NO contiene frontend**.
+### Entidad Principal: UserAccount
 
-Es un microservicio backend puro que expone únicamente una API REST. La interacción con el sistema se realiza mediante:
+**Ubicación**: `com.fv.billpay.api.identity.entity.UserAccount`
 
-1. **Clientes HTTP externos** (otras aplicaciones, frontends SPA, aplicaciones móviles)
-2. **Swagger UI** - Interfaz auto-generada para testing de la API
-3. **Quarkus Dev UI** - Solo disponible en modo desarrollo (`http://localhost:8089/q/dev/`)
+```java
+@Entity
+@Table(name = "user_account")
+public class UserAccount extends PanacheEntityBase {
+    
+    @Id
+    private UUID id;                    // UUID del usuario (sincronizado con Keycloak)
+    
+    private String username;            // Nombre de usuario único
+    private String email;               // Correo electrónico
+    private String firstName;           // Nombre
+    private String lastName;            // Apellido
+    private byte[] profileImage;        // Imagen de perfil (BYTEA)
+    private ZonedDateTime createdAt;    // Fecha de creación
+}
+```
+
+### Modelo de Datos en Keycloak
+
+El sistema gestiona las siguientes entidades en Keycloak (no persistidas en PostgreSQL):
+
+#### 1. User (Usuario)
+- `id` (UUID)
+- `username` (String, único)
+- `email` (String)
+- `firstName` (String)
+- `lastName` (String)
+- `enabled` (Boolean)
+- `emailVerified` (Boolean)
+- `credentials` (Password)
+
+#### 2. Role (Rol)
+- `name` (String, único, clave primaria)
+- `description` (String)
+- `composite` (Boolean)
+
+#### 3. Group (Grupo)
+- `id` (UUID)
+- `name` (String)
+- `path` (String, ruta jerárquica)
+- `subGroups` (List<Group>)
+
+#### 4. Asignaciones
+- **User → Groups** (relación N:N)
+- **User → Roles** (relación N:N)
+- **Group → Roles** (relación N:N)
+
+### Flujo de Sincronización
+
+```
+┌──────────────┐          ┌──────────────┐
+│   Keycloak   │          │  PostgreSQL  │
+│              │          │              │
+│  - Users     │◄────────►│ user_account │
+│  - Roles     │          │              │
+│  - Groups    │          └──────────────┘
+│  - Mappings  │                ▲
+└──────────────┘                │
+       │                        │
+       └────────────────────────┘
+         Sincronización en
+         cada operación CRUD
+```
+
+**Estrategia de Sincronización:**
+1. **Crear**: Primero en Keycloak → Luego en PostgreSQL
+2. **Actualizar**: Keycloak y PostgreSQL en paralelo
+3. **Eliminar**: Keycloak y PostgreSQL (transaccional)
+4. **Lectura**: Combinar datos de ambas fuentes
 
 ---
 
-## 10. Calidad del Código
+## Lógica de Negocio
 
-### Fortalezas
+### Dominio de Negocio
 
-✅ **Arquitectura limpia:** Separación clara de responsabilidades en capas  
-✅ **Validaciones declarativas:** Uso de Jakarta Validation en DTOs  
-✅ **Inyección de dependencias:** Correcto uso de CDI  
-✅ **Documentación automática:** OpenAPI/Swagger integrado  
-✅ **Respuestas estandarizadas:** Formato consistente de respuestas HTTP  
-✅ **Manejo de excepciones:** Mapper global para consistencia de errores  
+El sistema pertenece al dominio de **Gestión de Identidad y Acceso (IAM)** para la aplicación `billpay` (sistema de pagos de facturas).
+
+### Casos de Uso Principales
+
+#### 1. Gestión de Usuarios
+
+**UC-001: Crear Usuario**
+- **Actor**: Administrador con rol `admin_users`
+- **Flujo**:
+  1. Validar datos del usuario (username, email, password con política de complejidad)
+  2. Crear usuario en Keycloak con credenciales
+  3. Sincronizar usuario en PostgreSQL
+  4. Retornar UserResponseDto
+
+**UC-002: Actualizar Usuario**
+- **Actor**: Administrador con rol `admin_users`
+- **Flujo**:
+  1. Verificar existencia del usuario en PostgreSQL
+  2. Actualizar datos en Keycloak
+  3. Sincronizar cambios en PostgreSQL
+  4. Retornar usuario actualizado
+
+**UC-003: Gestión de Imagen de Perfil**
+- **Actor**: Administrador con rol `admin_users`
+- **Flujo**:
+  1. Recibir archivo multipart (imagen)
+  2. Validar formato y tamaño
+  3. Convertir a bytes
+  4. Persistir en PostgreSQL (campo BYTEA)
+  5. Retornar confirmación
+
+#### 2. Gestión de Roles
+
+**UC-004: Crear Rol**
+- **Actor**: Administrador con rol `admin_role`
+- **Flujo**:
+  1. Validar nombre de rol (formato: `^[a-zA-Z0-9_-]{3,50}$`)
+  2. Crear rol en Keycloak (realm role)
+  3. Retornar RoleResponseDto
+
+**UC-005: Asignar Roles a Usuario**
+- **Actor**: Administrador con rol `admin_users`
+- **Flujo**:
+  1. Verificar existencia del usuario
+  2. Obtener roles disponibles en Keycloak
+  3. Asignar roles realm al usuario
+  4. Retornar lista de roles asignados
+
+#### 3. Gestión de Grupos
+
+**UC-006: Crear Grupo**
+- **Actor**: Administrador con rol `admin_groups`
+- **Flujo**:
+  1. Validar nombre de grupo
+  2. Crear grupo en Keycloak (con ruta jerárquica)
+  3. Retornar GroupResponseDto
+
+**UC-007: Asignar Roles a Grupo**
+- **Actor**: Administrador con rol `admin_groups`
+- **Flujo**:
+  1. Verificar existencia del grupo
+  2. Asignar roles realm al grupo
+  3. Usuarios del grupo heredan roles automáticamente
+  4. Retornar lista de roles del grupo
+
+#### 4. Gestión de Permisos
+
+**UC-008: Asignar Grupos a Usuario**
+- **Actor**: Administrador con rol `admin_users`
+- **Flujo**:
+  1. Verificar existencia de usuario y grupos
+  2. Unir usuario a grupos en Keycloak
+  3. Usuario hereda roles de los grupos
+  4. Retornar grupos asignados
+
+### Reglas de Negocio
+
+#### RN-001: Validación de Password
+```java
+@Pattern(
+    regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+    message = "La contraseña debe contener al menos: 1 mayúscula, 1 minúscula, 1 número y 1 carácter especial"
+)
+```
+- Mínimo 8 caracteres
+- Al menos 1 letra mayúscula
+- Al menos 1 letra minúscula
+- Al menos 1 número
+- Al menos 1 carácter especial (`@$!%*?&`)
+
+#### RN-002: Validación de Username
+```java
+@Pattern(
+    regexp = "^[a-zA-Z0-9._-]+$",
+    message = "El username solo puede contener letras, números, puntos, guiones y guiones bajos"
+)
+@Size(min = 3, max = 255)
+```
+
+#### RN-003: Validación de Nombre de Rol
+```java
+@Pattern(
+    regexp = "^[a-zA-Z0-9_-]{3,50}$",
+    message = "Formato de rol inválido. Solo alfanuméricos, guiones y guiones bajos (3-50 caracteres)"
+)
+```
+
+#### RN-004: Unicidad de Username
+- El username debe ser único en todo el sistema
+- Validado tanto en PostgreSQL (constraint UNIQUE) como en Keycloak
+
+#### RN-005: Paginación
+- Tamaño de página por defecto: 10 elementos
+- Tamaño mínimo: 1
+- Tamaño máximo: 100
+
+#### RN-006: Control de Acceso Basado en Roles (RBAC)
+
+| Recurso | Operación | Roles Requeridos |
+|---------|-----------|------------------|
+| `/users` | Todas | `admin_users` |
+| `/roles` | Todas | `admin_role` |
+| `/groups` | Todas | `admin_groups` |
+
+### Ubicación de la Lógica
+
+#### Capa de Servicio (Lógica de Negocio)
+
+**Ejemplo: `UserServiceImpl.createUser()`**
+
+```java
+@WithTransaction
+public Uni<UserResponseDto> createUser(UserRequestDto userRequestDto) {
+    return Uni.createFrom().item(() -> {
+        // 1. Crear en Keycloak (bloqueante)
+        String userId = userKeycloakRepository.createUser(userRequestDto);
+        UserRepresentation keycloakUser = userKeycloakRepository.getUserById(userId);
+        return UserMapper.fromKeycloakUser(keycloakUser);
+    })
+    .chain(userAccount -> {
+        // 2. Sincronizar en PostgreSQL (reactivo)
+        return userAccountRepository.persist(userAccount)
+            .map(persisted -> {
+                UserRepresentation keycloakUser = userKeycloakRepository.getUserById(
+                    persisted.getId().toString()
+                );
+                return UserMapper.toResponseDto(persisted, keycloakUser);
+            });
+    })
+    .onFailure().transform(error -> {
+        // Manejo de errores personalizado
+        // ...
+    });
+}
+```
+
+**Características**:
+- Uso de `@WithTransaction` para garantizar atomicidad en PostgreSQL
+- Composición reactiva con `.chain()` para operaciones secuenciales
+- Manejo de errores con transformación de excepciones
+- Logging estructurado
+
+#### Capa de Repositorio (Acceso a Datos)
+
+**PostgreSQL - Reactivo:**
+```java
+@ApplicationScoped
+public class UserAccountRepository implements PanacheRepositoryBase<UserAccount, UUID> {
+    
+    public Uni<UserAccount> findByUsername(String username) {
+        return find("username", username).firstResult();
+    }
+    
+    public Uni<List<UserAccount>> findAllPaginated(int page, int size) {
+        return findAll().page(Page.of(page, size)).list();
+    }
+}
+```
+
+**Keycloak - Síncrono:**
+```java
+@ApplicationScoped
+public class UserKeycloakRepositoryImpl implements IUserKeycloakRepository {
+    
+    public String createUser(UserRequestDto userRequestDto) {
+        UsersResource usersResource = getUsersResource();
+        UserRepresentation user = new UserRepresentation();
+        // ... configurar usuario
+        Response response = usersResource.create(user);
+        // ... manejar respuesta
+    }
+}
+```
+
+### Manejo de Excepciones
+
+El sistema utiliza excepciones personalizadas del dominio:
+
+| Excepción | Código HTTP | Escenario |
+|-----------|-------------|-----------|
+| `UserNotFoundException` | 404 | Usuario no encontrado |
+| `UserAlreadyExistsException` | 409 | Username o email duplicado |
+| `InvalidUserDataException` | 400 | Datos de entrada inválidos |
+| `KeycloakSyncException` | 500 | Error en sincronización con Keycloak |
+
+**Mapeo Global de Excepciones:**
+
+La clase `GlobalExceptionMapper` implementa el patrón **Exception Translation**:
+
+```java
+@Provider
+public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
+    @Override
+    public Response toResponse(Exception exception) {
+        // Mapeo de excepciones de dominio a respuestas HTTP
+        // Retorna JSON estructurado con código de error y mensaje
+    }
+}
+```
+
+---
+
+## Endpoints de API
+
+### Configuración General
+
+- **Base URL**: `http://localhost:8089`
+- **Content-Type**: `application/json`
+- **Autenticación**: Bearer Token (JWT)
+- **Documentación**: OpenAPI 3.0 en `/openapi`
+
+### 1. Gestión de Usuarios (`/users`)
+
+#### POST /users
+**Crear usuario**
+- **Rol Requerido**: `admin_users`
+- **Request Body**:
+```json
+{
+  "username": "john_doe",
+  "email": "john@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "password": "SecureP@ss123",
+  "enabled": true
+}
+```
+- **Response**: `201 Created`
+```json
+{
+  "id": "a1b2c3d4-...",
+  "username": "john_doe",
+  "email": "john@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "enabled": true,
+  "createdAt": "2025-11-19T10:30:00Z"
+}
+```
+
+#### PUT /users/{userId}
+**Actualizar usuario**
+- **Rol Requerido**: `admin_users`
+- **Path Param**: `userId` (UUID)
+- **Response**: `200 OK`
+
+#### DELETE /users/{userId}
+**Eliminar usuario**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK`
+
+#### GET /users/{userId}
+**Obtener usuario por ID**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK`
+
+#### GET /users
+**Listar usuarios con paginación**
+- **Rol Requerido**: `admin_users`
+- **Query Params**:
+  - `page` (default: 0)
+  - `size` (default: 20)
+- **Response**: `200 OK` (Array de UserResponseDto)
+
+#### GET /users/search?username={username}
+**Buscar usuarios por username**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK` (Array de UserResponseDto)
+
+#### PUT /users/{userId}/profile-image
+**Actualizar imagen de perfil**
+- **Rol Requerido**: `admin_users`
+- **Content-Type**: `multipart/form-data`
+- **Form Param**: `image` (FileUpload)
+- **Response**: `200 OK`
+
+#### GET /users/{userId}/profile-image
+**Obtener imagen de perfil**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK` (image/jpeg, image/png, image/gif)
+
+#### DELETE /users/{userId}/profile-image
+**Eliminar imagen de perfil**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK`
+
+### 2. Gestión de Roles (`/roles`)
+
+#### POST /roles
+**Crear rol**
+- **Rol Requerido**: `admin_role`
+- **Request Body**:
+```json
+{
+  "name": "viewer",
+  "description": "Usuario con permisos de solo lectura"
+}
+```
+- **Response**: `200 OK`
+
+#### PUT /roles/{roleName}
+**Actualizar rol**
+- **Rol Requerido**: `admin_role`
+- **Path Param**: `roleName` (String)
+- **Response**: `200 OK`
+
+#### DELETE /roles/{roleName}
+**Eliminar rol**
+- **Rol Requerido**: `admin_role`
+- **Response**: `200 OK`
+
+#### GET /roles/{roleName}
+**Obtener rol por nombre**
+- **Rol Requerido**: `admin_role`
+- **Response**: `200 OK`
+
+#### GET /roles
+**Listar roles con paginación**
+- **Rol Requerido**: `admin_role`
+- **Query Params**:
+  - `page` (default: 0)
+  - `size` (default: 10, max: 100)
+- **Response**: `200 OK` (PagedResponse<RoleResponseDto>)
+
+### 3. Gestión de Grupos (`/groups`)
+
+#### POST /groups
+**Crear grupo**
+- **Rol Requerido**: `admin_groups`
+- **Request Body**:
+```json
+{
+  "name": "developers",
+  "path": "/developers"
+}
+```
+- **Response**: `200 OK`
+
+#### PUT /groups/{groupId}
+**Actualizar grupo**
+- **Rol Requerido**: `admin_groups`
+- **Response**: `200 OK`
+
+#### DELETE /groups/{groupId}
+**Eliminar grupo**
+- **Rol Requerido**: `admin_groups`
+- **Response**: `200 OK`
+
+#### GET /groups/{groupId}
+**Obtener grupo por ID**
+- **Rol Requerido**: `admin_groups`
+- **Response**: `200 OK`
+
+#### GET /groups/name/{groupName}
+**Obtener grupo por nombre**
+- **Rol Requerido**: `admin_groups`
+- **Response**: `200 OK`
+
+#### GET /groups
+**Listar grupos con paginación**
+- **Rol Requerido**: `admin_groups`
+- **Query Params**:
+  - `page` (default: 0)
+  - `size` (default: 10, max: 100)
+- **Response**: `200 OK` (PagedResponse<GroupResponseDto>)
+
+### 4. Asignación de Roles a Usuarios (`/users/{userId}/roles`)
+
+#### POST /users/{userId}/roles
+**Asignar roles a usuario**
+- **Rol Requerido**: `admin_users`
+- **Request Body**:
+```json
+{
+  "roleNames": ["viewer", "editor"]
+}
+```
+- **Response**: `200 OK` (Lista de UserRoleResponseDto)
+
+#### DELETE /users/{userId}/roles
+**Remover roles de usuario**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK`
+
+#### GET /users/{userId}/roles
+**Obtener roles de usuario**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK` (Lista de UserRoleResponseDto)
+
+### 5. Asignación de Grupos a Usuarios (`/users/{userId}/groups`)
+
+#### POST /users/{userId}/groups
+**Asignar grupos a usuario**
+- **Rol Requerido**: `admin_users`
+- **Request Body**:
+```json
+{
+  "groupIds": ["uuid-1", "uuid-2"]
+}
+```
+- **Response**: `200 OK` (Lista de UserGroupResponseDto)
+
+#### DELETE /users/{userId}/groups
+**Remover grupos de usuario**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK`
+
+#### GET /users/{userId}/groups
+**Obtener grupos de usuario**
+- **Rol Requerido**: `admin_users`
+- **Response**: `200 OK` (Lista de UserGroupResponseDto)
+
+### 6. Asignación de Roles a Grupos (`/groups/{groupId}/roles`)
+
+#### POST /groups/{groupId}/roles
+**Asignar roles a grupo**
+- **Rol Requerido**: `admin_groups`
+- **Request Body**:
+```json
+{
+  "roleNames": ["viewer"]
+}
+```
+- **Response**: `200 OK`
+
+#### DELETE /groups/{groupId}/roles
+**Remover roles de grupo**
+- **Rol Requerido**: `admin_groups`
+- **Response**: `200 OK`
+
+#### GET /groups/{groupId}/roles
+**Obtener roles de grupo**
+- **Rol Requerido**: `admin_groups`
+- **Response**: `200 OK`
+
+#### GET /groups/{groupId}/roles/available
+**Obtener roles disponibles para asignar al grupo**
+- **Rol Requerido**: `admin_groups`
+- **Response**: `200 OK`
+
+---
+
+## Seguridad
+
+### Autenticación
+
+**Mecanismo**: OAuth2 / OpenID Connect (OIDC)
+
+El sistema utiliza **Keycloak** como Identity Provider:
+
+```properties
+quarkus.oidc.enabled=true
+quarkus.oidc.auth-server-url=${KEYCLOAK_URL}realms/${KEYCLOAK_REALM}
+quarkus.oidc.client-id=${KEYCLOAK_CLIENT_ID}
+quarkus.oidc.credentials.secret=${KEYCLOAK_CLIENT_SECRET}
+quarkus.oidc.application-type=service
+```
+
+**Flujo de Autenticación**:
+1. Cliente obtiene token JWT de Keycloak usando Client Credentials Grant
+2. Cliente incluye token en header: `Authorization: Bearer {token}`
+3. Quarkus valida token con la clave pública de Keycloak
+4. Si es válido, extrae roles y permite acceso
+
+### Autorización
+
+**Modelo**: Role-Based Access Control (RBAC)
+
+Cada endpoint está protegido con la anotación `@RolesAllowed`:
+
+```java
+@RolesAllowed({"admin_users"})
+public Uni<Response> createUser(UserRequestDto userRequestDto) {
+    // ...
+}
+```
+
+**Roles del Sistema**:
+
+| Rol | Descripción | Permisos |
+|-----|-------------|----------|
+| `admin_users` | Administrador de usuarios | CRUD usuarios, asignar roles/grupos |
+| `admin_role` | Administrador de roles | CRUD roles |
+| `admin_groups` | Administrador de grupos | CRUD grupos, asignar roles a grupos |
+| `viewer` | Visualizador | Solo lectura (si se implementa) |
+
+### Validación de Entrada
+
+**Bean Validation (Jakarta Validation)**:
+
+```java
+@NotBlank(message = "El username es obligatorio")
+@Size(min = 3, max = 255)
+@Pattern(regexp = "^[a-zA-Z0-9._-]+$")
+private String username;
+
+@Email(message = "El email debe tener un formato válido")
+private String email;
+```
+
+**Validación de UUID**:
+```java
+public class UuidValidator {
+    public static UUID parseUuid(String id) {
+        try {
+            return UUID.fromString(id);
+        } catch (IllegalArgumentException e) {
+            throw new InvalidUserDataException("ID inválido: " + id);
+        }
+    }
+}
+```
+
+### Headers de Seguridad
+
+```properties
+quarkus.http.auth.policy.role-policy.roles-allowed=admin,role-manager,viewer
+keycloak.ssl-required=external
+```
+
+### Service Account en Keycloak
+
+El cliente `cli_billpay_app` es un **Service Account** con permisos especiales:
+
+**Permisos Requeridos en Keycloak**:
+- `realm-management`: `manage-users`
+- `realm-management`: `manage-realm`
+- `realm-management`: `view-users`
+- `realm-management`: `view-realm`
+- `realm-management`: `manage-clients`
+
+---
+
+## Análisis de Vulnerabilidades
+
+### ✅ Buenas Prácticas Implementadas
+
+#### 1. Externalización de Credenciales
+✅ **Todas las credenciales se obtienen de variables de entorno**:
+
+```properties
+keycloak.client-secret=${KEYCLOAK_CLIENT_SECRET}
+quarkus.datasource.username=${DB_USERNAME:postgres}
+quarkus.datasource.password=${DB_PASSWORD:postgres}
+```
+
+**Comentario en código**:
+```properties
+# IMPORTANTE: Las credenciales deben estar en variables de entorno, NO hardcodeadas
+```
+
+#### 2. Archivo de Ejemplo
+✅ Se incluye `.env.example` (verificar si contiene placeholders, no valores reales)
+
+#### 3. Validación de Entrada Robusta
+✅ Uso extensivo de Bean Validation con patrones regex seguros
+
+#### 4. Manejo de Excepciones Seguro
+✅ No se exponen stack traces en producción:
+
+```java
+private boolean isDevelopment() {
+    return "dev".equalsIgnoreCase(profile) || "test".equalsIgnoreCase(profile);
+}
+
+// En producción: mensajes genéricos
+String errorMessage = isDevelopment() 
+    ? exception.getMessage() + " (" + exception.getClass().getSimpleName() + ")"
+    : "Error interno del servidor";
+```
+
+#### 5. SQL Injection
+✅ **Inmune a SQL Injection**: Uso de Hibernate Reactive Panache con consultas parametrizadas
+
+#### 6. Passwords
+✅ Passwords nunca se almacenan en PostgreSQL, solo en Keycloak (hasheado con bcrypt)
+
+### ⚠️ Recomendaciones de Seguridad
+
+#### 1. Logging de Contraseñas
+⚠️ **Riesgo Bajo**: Verificar que el logging no registre passwords
+
+**Recomendación**:
+```java
+log.info("Creando usuario: {}", userRequestDto.getUsername()); // ✅ Correcto
+// NO: log.info("Request: {}", userRequestDto); // ❌ Podría loggear password
+```
+
+#### 2. Validación de Tamaño de Imagen
+⚠️ **Riesgo Medio**: No hay validación explícita del tamaño de imagen de perfil
+
+**Recomendación**:
+```java
+if (imageBytes.length > 5 * 1024 * 1024) { // 5 MB
+    throw new InvalidUserDataException("La imagen no puede exceder 5 MB");
+}
+```
+
+#### 3. Rate Limiting
+⚠️ **Riesgo Medio**: No hay protección contra ataques de fuerza bruta
+
+**Recomendación**: Implementar rate limiting con:
+- `quarkus-bucket4j` o
+- Keycloak Brute Force Protection
+
+#### 4. CORS
+⚠️ **Verificar**: No se observa configuración de CORS en `application.properties`
+
+**Recomendación**:
+```properties
+quarkus.http.cors=true
+quarkus.http.cors.origins=https://app.billpay.com
+quarkus.http.cors.methods=GET,POST,PUT,DELETE
+```
+
+#### 5. HTTPS en Producción
+⚠️ **Crítico**: Asegurar que en producción se use HTTPS
+
+**Recomendación**:
+```properties
+# Producción
+quarkus.http.ssl.certificate.key-store-file=keystore.jks
+quarkus.http.ssl.certificate.key-store-password=${KEYSTORE_PASSWORD}
+```
+
+#### 6. Timeout de Conexión de PostgreSQL
+⚠️ **Verificar**: No se observa configuración de timeouts
+
+**Recomendación**:
+```properties
+quarkus.datasource.reactive.idle-timeout=10m
+quarkus.datasource.reactive.connection-timeout=5s
+```
+
+### 🔒 Resumen de Seguridad
+
+| Aspecto | Estado | Nivel de Riesgo |
+|---------|--------|-----------------|
+| Credenciales externalizadas | ✅ Implementado | Ninguno |
+| Autenticación JWT | ✅ Implementado | Ninguno |
+| Autorización RBAC | ✅ Implementado | Ninguno |
+| Validación de entrada | ✅ Implementado | Ninguno |
+| SQL Injection | ✅ Protegido | Ninguno |
+| Password policy | ✅ Implementado | Ninguno |
+| Logging de passwords | ⚠️ Verificar | Bajo |
+| Validación tamaño imagen | ❌ No implementado | Medio |
+| Rate limiting | ❌ No implementado | Medio |
+| CORS | ⚠️ Verificar | Medio |
+| HTTPS | ⚠️ Configurar en prod | Alto |
+
+---
+
+## Frontend
+
+### Análisis de Frontend
+
+**Conclusión**: **Este proyecto NO tiene frontend**
+
+#### Evidencia
+
+1. **No se encontraron archivos frontend**:
+   - No existen archivos `.html`, `.js`, `.jsx`, `.ts`, `.tsx`, `.css`, `.vue`, `.angular`
+   - No existe `package.json` (Node.js)
+   - No existen carpetas típicas de frontend: `public/`, `static/`, `assets/`, `components/`
+
+2. **Tipo de aplicación**:
+   - Es una **API REST pura** (backend)
+   - Configurado como `quarkus.oidc.application-type=service`
+
+3. **Interfaz de usuario**:
+   - La única interfaz disponible es **Swagger UI** en modo desarrollo (`/q/swagger-ui`)
+   - Swagger UI es solo para testing/documentación, no es parte de la aplicación
+
+### Arquitectura del Proyecto
+
+```
+┌──────────────────────────────────────────────┐
+│          Frontend (Separado)                 │
+│    Aplicación web/móvil de terceros          │
+│    Consume API REST vía HTTP + JWT           │
+└────────────────┬─────────────────────────────┘
+                 │
+                 │ HTTP/JSON
+                 │ Bearer Token
+                 ▼
+┌──────────────────────────────────────────────┐
+│      api-identity (Este proyecto)            │
+│      API REST - Backend Only                 │
+│                                              │
+│  ┌─────────────────────────────────────┐    │
+│  │  JAX-RS Resources                   │    │
+│  │  (REST Endpoints)                   │    │
+│  └──────────────┬──────────────────────┘    │
+│                 │                            │
+│  ┌──────────────▼──────────────────────┐    │
+│  │  Services (Lógica de Negocio)       │    │
+│  └──────────────┬──────────────────────┘    │
+│                 │                            │
+│  ┌──────────────▼──────────────────────┐    │
+│  │  Repositories (Acceso a Datos)      │    │
+│  └──────────────┬──────────────────────┘    │
+└─────────────────┼────────────────────────────┘
+                  │
+      ┌───────────┴──────────┐
+      ▼                      ▼
+┌──────────┐          ┌─────────────┐
+│PostgreSQL│          │  Keycloak   │
+└──────────┘          └─────────────┘
+```
+
+### Consumo de la API
+
+La API está diseñada para ser consumida por:
+- **Aplicaciones web** (React, Angular, Vue.js, etc.)
+- **Aplicaciones móviles** (iOS, Android)
+- **Otros microservicios**
+- **Sistemas externos** con autenticación JWT
+
+**Ejemplo de consumo desde JavaScript**:
+```javascript
+// 1. Obtener token de Keycloak
+const tokenResponse = await fetch('http://keycloak:8083/realms/billpay_app/protocol/openid-connect/token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({
+    grant_type: 'password',
+    client_id: 'frontend-app',
+    username: 'user@example.com',
+    password: 'password123'
+  })
+});
+const { access_token } = await tokenResponse.json();
+
+// 2. Consumir API con token
+const usersResponse = await fetch('http://localhost:8089/users', {
+  headers: {
+    'Authorization': `Bearer ${access_token}`,
+    'Content-Type': 'application/json'
+  }
+});
+const users = await usersResponse.json();
+```
+
+---
+
+## Recomendaciones
+
+### 1. Mejoras de Arquitectura
+
+#### 1.1 Implementar Cache
+**Problema**: Cada consulta de usuario requiere dos llamadas (PostgreSQL + Keycloak)
+
+**Solución**:
+```xml
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-cache</artifactId>
+</dependency>
+```
+
+```java
+@CacheResult(cacheName = "users")
+public Uni<UserResponseDto> getUserById(String userId) {
+    // ...
+}
+```
+
+#### 1.2 Implementar Health Checks
+```xml
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-smallrye-health</artifactId>
+</dependency>
+```
+
+```java
+@Liveness
+public class KeycloakHealthCheck implements HealthCheck {
+    @Override
+    public HealthCheckResponse call() {
+        // Verificar conexión con Keycloak
+    }
+}
+```
+
+#### 1.3 Métricas y Observabilidad
+```xml
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
+</dependency>
+```
+
+### 2. Mejoras de Seguridad
+
+#### 2.1 Implementar Secrets Management
+**Recomendación**: Usar HashiCorp Vault o AWS Secrets Manager
+
+```properties
+quarkus.vault.url=http://localhost:8200
+quarkus.vault.kv-secret-engine-version=2
+```
+
+#### 2.2 Implementar Auditoría
+**Crear entidad `AuditLog`**:
+```java
+@Entity
+public class AuditLog {
+    private String action;      // CREATE_USER, DELETE_ROLE, etc.
+    private String userId;      // Usuario que realizó la acción
+    private String targetId;    // ID del recurso afectado
+    private ZonedDateTime timestamp;
+    private String ipAddress;
+    private Map<String, Object> metadata;
+}
+```
+
+#### 2.3 Implementar Rate Limiting
+```xml
+<dependency>
+    <groupId>io.quarkiverse.bucket4j</groupId>
+    <artifactId>quarkus-bucket4j</artifactId>
+</dependency>
+```
+
+### 3. Mejoras de Rendimiento
+
+#### 3.1 Operaciones en Lote
+**Implementar**:
+```java
+public Uni<List<UserResponseDto>> createUsers(List<UserRequestDto> users) {
+    // Crear usuarios en lote
+}
+```
+
+#### 3.2 Paginación Cursor-Based
+**En lugar de offset-based**, para mejor rendimiento en datasets grandes:
+```java
+public Uni<CursorPage<UserResponseDto>> getUsersCursor(String cursor, int size) {
+    // ...
+}
+```
+
+### 4. Mejoras de DevOps
+
+#### 4.1 CI/CD Pipeline
+**Archivo**: `.github/workflows/ci.yml`
+```yaml
+name: CI/CD
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build with Maven
+        run: ./mvnw clean package
+      - name: Run tests
+        run: ./mvnw test
+```
+
+#### 4.2 Docker Compose para Desarrollo
+**Archivo**: `docker-compose.yml`
+```yaml
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: billpay_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+      
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.0
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8083:8080"
+    command: start-dev
+```
+
+#### 4.3 Tests de Integración
+```java
+@QuarkusTest
+@TestProfile(IntegrationTestProfile.class)
+public class UserResourceIT {
+    
+    @Test
+    public void testCreateUser() {
+        given()
+            .contentType(ContentType.JSON)
+            .body(new UserRequestDto(...))
+        .when()
+            .post("/users")
+        .then()
+            .statusCode(201);
+    }
+}
+```
+
+### 5. Documentación
+
+#### 5.1 Mejorar OpenAPI
+```java
+@OpenAPIDefinition(
+    info = @Info(
+        title = "API Identity - BillPay",
+        version = "1.0.0",
+        description = "API de gestión de identidad y control de acceso",
+        contact = @Contact(
+            name = "Equipo BillPay",
+            email = "support@billpay.com"
+        )
+    ),
+    security = @SecurityRequirement(name = "bearer-jwt")
+)
+```
+
+#### 5.2 Documentación de Arquitectura
+**Crear**: `docs/architecture.md` con diagramas C4
+
+#### 5.3 README Mejorado
+- Prerrequisitos
+- Instrucciones de instalación paso a paso
+- Variables de entorno requeridas
+- Ejemplos de uso de la API
+- Troubleshooting
+
+### 6. Mejoras de Testing
+
+#### 6.1 Coverage Mínimo
+**Objetivo**: 80% de cobertura de código
+
+```xml
+<plugin>
+    <groupId>org.jacoco</groupId>
+    <artifactId>jacoco-maven-plugin</artifactId>
+    <configuration>
+        <rules>
+            <rule>
+                <element>BUNDLE</element>
+                <limits>
+                    <limit>
+                        <counter>LINE</counter>
+                        <value>COVEREDRATIO</value>
+                        <minimum>0.80</minimum>
+                    </limit>
+                </limits>
+            </rule>
+        </rules>
+    </configuration>
+</plugin>
+```
+
+#### 6.2 Tests de Contrato (Contract Testing)
+**Para garantizar compatibilidad con consumidores**:
+```xml
+<dependency>
+    <groupId>au.com.dius.pact.consumer</groupId>
+    <artifactId>junit5</artifactId>
+</dependency>
+```
+
+---
+
+## Conclusiones
+
+### Fortalezas del Proyecto
+
+✅ **Arquitectura moderna**: Uso de Quarkus con programación reactiva  
+✅ **Separación de concerns**: Capas bien definidas (Resource-Service-Repository)  
+✅ **Seguridad robusta**: Autenticación JWT + RBAC  
+✅ **Validación exhaustiva**: Bean Validation en todos los DTOs  
+✅ **Manejo de errores**: Excepciones de dominio + mapeo global  
+✅ **Externalización de configuración**: Variables de entorno  
+✅ **Documentación automática**: OpenAPI 3.0  
+✅ **Sincronización dual**: Keycloak + PostgreSQL  
+✅ **Resiliencia**: Retry automático en conexiones con Keycloak  
 
 ### Áreas de Mejora
 
-❌ **Seguridad crítica:** Credenciales hardcodeadas  
-❌ **Falta de tests:** No se detectan pruebas unitarias ni de integración  
-❌ **Código legacy:** SQL queries no utilizadas en `Constants.java`  
-❌ **Logs insuficientes:** No hay trazas de auditoría  
-❌ **Manejo de errores genérico:** Try-catch muy amplios  
-❌ **Método sin implementar:** `RoleServiceImpl.count()` retorna 0  
+⚠️ **Testing**: Falta de tests unitarios y de integración  
+⚠️ **Observabilidad**: Sin métricas, tracing distribuido o health checks  
+⚠️ **Cache**: Sin implementación de caché (performance)  
+⚠️ **Rate Limiting**: Vulnerable a ataques de fuerza bruta  
+⚠️ **Auditoría**: Sin logging de acciones administrativas  
+⚠️ **Documentación**: README básico, falta documentación de arquitectura  
+
+### Complejidad del Proyecto
+
+**Nivel**: ⭐⭐⭐ Medio-Alto (3/5)
+
+**Justificación**:
+- Integración compleja con dos fuentes de datos (Keycloak + PostgreSQL)
+- Programación reactiva con Mutiny
+- Sincronización bidireccional
+- Manejo de múltiples casos edge
+
+**Líneas de Código Estimadas**: ~3,500 LOC (sin contar tests)
+
+### Tiempo de Comprensión
+
+Para un desarrollador con experiencia en Java y Quarkus:
+- **Básico** (CRUD simple): 2-3 horas
+- **Intermedio** (flujos de sincronización): 1 día
+- **Avanzado** (arquitectura completa): 2-3 días
 
 ---
 
-## 11. Conclusiones y Próximos Pasos
+## Anexos
 
-### Resumen
-
-**api-role** es un microservicio bien estructurado que cumple su función como API de gestión de roles, actuando como proxy especializado sobre Keycloak. La arquitectura de capas es clara y extensible, pero presenta **vulnerabilidades críticas de seguridad** que deben remediarse inmediatamente.
-
-### Arquitectura General
-
-```
-┌─────────────────────────────────────────┐
-│    Clientes (Frontend, Otros APIs)     │
-└──────────────────┬──────────────────────┘
-                   │ HTTP/REST
-                   ▼
-┌─────────────────────────────────────────┐
-│     api-role (Puerto 8089)              │
-│  - Validación de DTOs                   │
-│  - Lógica de negocio básica             │
-│  - Transformación de datos              │
-└──────────────────┬──────────────────────┘
-                   │ Keycloak Admin API
-                   ▼
-┌─────────────────────────────────────────┐
-│   Keycloak Server (Puerto 8083)         │
-│  - Persistencia de roles                │
-│  - Gestión de identidades               │
-│  - Autenticación OIDC                   │
-└─────────────────────────────────────────┘
-```
-
-### Próximos Pasos Recomendados
-
-#### 🔴 Prioridad 1: Seguridad (Inmediato)
-
-1. **Remediar vulnerabilidades críticas:**
-   - [ ] Rotar todas las credenciales expuestas
-   - [ ] Migrar secretos a variables de entorno
-   - [ ] Implementar contraseñas robustas
-   - [ ] Agregar autenticación a los endpoints
-
-2. **Implementar autenticación:**
-   ```java
-   @RolesAllowed({"admin", "role-manager"})
-   @POST
-   public Response create(@Valid RoleRequestDto dto) { ... }
-   ```
-
-#### 🟡 Prioridad 2: Calidad y Mantenibilidad (Corto Plazo)
-
-3. **Agregar cobertura de tests:**
-   - [ ] Tests unitarios para servicios y mappers
-   - [ ] Tests de integración con Keycloak (Testcontainers)
-   - [ ] Tests de contratos de API (Pact o Spring Cloud Contract)
-
-4. **Mejorar observabilidad:**
-   - [ ] Agregar logging estructurado (SLF4J + Logback/JSON)
-   - [ ] Implementar health checks (`/health`, `/ready`)
-   - [ ] Métricas de negocio (Micrometer + Prometheus)
-
-5. **Cleanup del código:**
-   - [ ] Eliminar `Constants.java` si no se usa
-   - [ ] Implementar `count()` o documentar limitación
-   - [ ] Manejo específico de excepciones de Keycloak
-
-#### 🟢 Prioridad 3: Funcionalidades (Mediano Plazo)
-
-6. **Evolución funcional:**
-   - [ ] Implementar asignación de roles a usuarios
-   - [ ] Agregar búsqueda y filtrado de roles
-   - [ ] Soporte para roles compuestos (composite roles)
-   - [ ] Implementar auditoría de cambios
-
-7. **Mejoras de arquitectura:**
-   - [ ] Implementar circuit breaker (Resilience4j) para llamadas a Keycloak
-   - [ ] Caché de roles consultados (Caffeine/Redis)
-   - [ ] Paginación real con count desde Keycloak
-
-#### 🔵 Prioridad 4: DevOps (Largo Plazo)
-
-8. **Containerización y despliegue:**
-   - [ ] Optimizar Dockerfiles existentes
-   - [ ] Pipeline CI/CD (GitHub Actions / GitLab CI)
-   - [ ] Deployment en Kubernetes con Helm charts
-   - [ ] Secrets management con Vault/K8s Secrets
-
----
-
-## 12. Documentación Técnica Complementaria
-
-### Configuración Requerida
-
-**Variables de Entorno para Producción:**
+### A. Comandos Útiles
 
 ```bash
-# Servidor Keycloak
-KEYCLOAK_AUTH_SERVER_URL=https://keycloak.production.com/
-KEYCLOAK_REALM=billpay_app
-KEYCLOAK_RESOURCE=cli_billpay_app
-KEYCLOAK_CREDENTIALS_SECRET=<SECRETO_ROTADO>
-
-# Credenciales Admin (usar Secrets Manager)
-KEYCLOAK_ADMIN_USERNAME=<USUARIO_SEGURO>
-KEYCLOAK_ADMIN_PASSWORD=<PASSWORD_COMPLEJO>
-
-# Configuración de la aplicación
-QUARKUS_HTTP_PORT=8089
-```
-
-### Comandos de Desarrollo
-
-```bash
-# Ejecutar en modo desarrollo
+# Desarrollo
 ./mvnw quarkus:dev
 
-# Ejecutar tests (cuando se implementen)
+# Build JVM
+./mvnw clean package
+
+# Build nativo
+./mvnw package -Dnative
+
+# Ejecutar tests
 ./mvnw test
 
-# Compilar para producción
-./mvnw package
+# Generar reporte de dependencias
+./mvnw dependency:tree
 
-# Generar imagen nativa
-./mvnw package -Dnative -Dquarkus.native.container-build=true
-
-# Ejecutar imagen Docker
-docker build -f src/main/docker/Dockerfile.jvm -t api-role:latest .
-docker run -p 8089:8089 api-role:latest
+# Análisis de seguridad
+./mvnw org.owasp:dependency-check-maven:check
 ```
 
-### Recursos Adicionales
-
-- **Documentación Quarkus:** https://quarkus.io/guides/
-- **Keycloak Admin API:** https://www.keycloak.org/docs-api/latest/rest-api/
-- **OpenAPI Spec:** `http://localhost:8089/openapi` (cuando la app está corriendo)
-
----
-
-**Documento generado:** 18 de noviembre de 2025  
-**Versión del Proyecto:** 1.0.0-SNAPSHOT  
-**Analista:** GitHub Copilot - Arquitecto de Software  
-**Repositorio:** `Transversal-kl/api-role` (Branch: Master)
-
----
-
-## 13. Migración de Seguridad: Password Grant → Client Credentials
-
-**Fecha de Migración:** 18 de noviembre de 2025  
-**Versión:** 2.0.0  
-**Estado:** ✅ Completada
-
-### Contexto de la Migración
-
-La versión inicial del sistema utilizaba **Password Grant** (OAuth 2.0) con credenciales de administrador hardcodeadas para autenticarse con Keycloak Admin API. Esta aproximación presentaba múltiples vulnerabilidades críticas de seguridad.
-
-### Problemas Identificados en la Versión 1.0
-
-| Problema | Severidad | Descripción |
-|----------|-----------|-------------|
-| Credenciales hardcodeadas | 🔴 CRÍTICA | Usuario y contraseña de admin en `application.properties` |
-| Password débil | 🔴 CRÍTICA | Contraseña `123456` (top 1 de contraseñas comunes) |
-| Password Grant deprecado | 🔴 CRÍTICA | OAuth 2.1 elimina completamente este flujo |
-| Privilegios excesivos | 🔴 CRÍTICA | Admin completo del realm (violación del principio de mínimo privilegio) |
-| Sin rotación de credenciales | 🟠 ALTA | Imposible rotar sin modificar código |
-| Auditoría imposible | 🟡 MEDIA | Todas las acciones aparecen como del usuario admin |
-
-### Solución Implementada
-
-Migración a **Client Credentials Grant** (OAuth 2.0/2.1) usando un Service Account dedicado con permisos granulares.
-
-#### Cambios Realizados
-
-**1. Creación de Service Account en Keycloak**
-
-Se creó un nuevo cliente configurado como Service Account:
-
-```
-Cliente ID: api-role-service-account
-Grant Type: Client Credentials
-Roles Asignados:
-  - realm-management → manage-realm
-  - realm-management → view-realm
-```
-
-**Documentación:** Ver `KEYCLOAK_SERVICE_ACCOUNT_SETUP.md` para pasos detallados.
-
-**2. Actualización de `application.properties`**
-
-```diff
-- # Keycloak (ajusta los valores a tu entorno)
-- keycloak.auth-server-url=http://localhost:8083/
-- keycloak.realm=billpay_app
-- keycloak.resource=cli_billpay_app
-- keycloak.credentials.secret=YGMyRIRzM2qa4hYZFxVVqrSQzRWlrZuB
-- keycloak.admin.username=kuroroluzbell
-- keycloak.admin.password=123456
-
-+ # Keycloak - Service Account Configuration (Client Credentials Grant)
-+ keycloak.auth-server-url=${KEYCLOAK_URL:http://localhost:8083/}
-+ keycloak.realm=${KEYCLOAK_REALM:billpay_app}
-+ keycloak.service-client-id=${KEYCLOAK_SERVICE_CLIENT_ID:api-role-service-account}
-+ keycloak.service-client-secret=${KEYCLOAK_SERVICE_CLIENT_SECRET}
-```
-
-**3. Refactorización de `KeycloakAdminProvider.java`**
-
-```diff
-  @PostConstruct
-  void init() {
-      this.keycloak = KeycloakBuilder.builder()
-          .serverUrl(serverUrl)
-          .realm(realm)
--         .grantType(OAuth2Constants.PASSWORD)
-+         .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
--         .username(adminUsername)
--         .password(adminPassword)
-+         .clientId(serviceClientId)
-+         .clientSecret(serviceClientSecret)
-          .build();
-  }
-```
-
-**Mejoras adicionales:**
-- ✅ Manejo de errores mejorado con logging específico
-- ✅ Retry automático en caso de pérdida de conexión
-- ✅ Cleanup en `@PreDestroy` para cerrar conexiones
-- ✅ Thread-safe con sincronización
-- ✅ Documentación completa en JavaDoc
-
-**4. Gestión de Variables de Entorno**
-
-Archivos creados:
-- `.env.example` - Template de variables de entorno
-- `setup-env.sh` - Script interactivo para configurar `.env`
-- `run-dev.sh` - Script para ejecutar la app con variables cargadas
-
-**Estructura de variables:**
+### B. Variables de Entorno Requeridas
 
 ```bash
-KEYCLOAK_URL=http://localhost:8083/
-KEYCLOAK_REALM=billpay_app
-KEYCLOAK_SERVICE_CLIENT_ID=api-role-service-account
-KEYCLOAK_SERVICE_CLIENT_SECRET=<secret_generado_por_keycloak>
-```
-
-### Beneficios de la Migración
-
-| Aspecto | Antes (v1.0) | Después (v2.0) | Mejora |
-|---------|-------------|----------------|--------|
-| **Seguridad** | Credenciales hardcodeadas | Variables de entorno | 🟢 +90% |
-| **OAuth Compliance** | Password Grant (deprecado) | Client Credentials | 🟢 100% |
-| **Privilegios** | Admin completo | Solo manage-realm | 🟢 +80% |
-| **Auditoría** | Usuario admin genérico | Service account específico | 🟢 +100% |
-| **Rotación** | Manual (modificar código) | Automática (env vars) | 🟢 +100% |
-| **Puntuación Seguridad** | 2.5/10 | 7.5/10 | 🟢 +200% |
-
-### Instrucciones de Despliegue
-
-#### Desarrollo Local
-
-1. **Configurar Keycloak:**
-   ```bash
-   # Seguir las instrucciones en KEYCLOAK_SERVICE_ACCOUNT_SETUP.md
-   ```
-
-2. **Configurar variables de entorno:**
-   ```bash
-   chmod +x setup-env.sh
-   ./setup-env.sh
-   # Seguir las instrucciones interactivas
-   ```
-
-3. **Ejecutar la aplicación:**
-   ```bash
-   chmod +x run-dev.sh
-   ./run-dev.sh
-   ```
-
-   O manualmente:
-   ```bash
-   export $(cat .env | grep -v '^#' | xargs)
-   ./mvnw quarkus:dev
-   ```
-
-#### Producción
-
-**Opción 1: Variables de Entorno del Sistema**
-
-```bash
-export KEYCLOAK_URL=https://keycloak.production.com/
+# Keycloak
+export KEYCLOAK_URL=http://localhost:8083/
 export KEYCLOAK_REALM=billpay_app
-export KEYCLOAK_SERVICE_CLIENT_ID=api-role-service-account
-export KEYCLOAK_SERVICE_CLIENT_SECRET=<secret_de_produccion>
+export KEYCLOAK_CLIENT_ID=cli_billpay_app
+export KEYCLOAK_CLIENT_SECRET=your-secret-here
 
-java -jar target/quarkus-app/quarkus-run.jar
+# PostgreSQL
+export DB_USERNAME=postgres
+export DB_PASSWORD=postgres
+export DB_REACTIVE_URL=postgresql://localhost:5432/billpay_db
 ```
 
-**Opción 2: Docker con Secrets**
+### C. Estructura de Base de Datos PostgreSQL
 
-```dockerfile
-# Dockerfile
-FROM registry.access.redhat.com/ubi8/openjdk-21:latest
-COPY target/quarkus-app/ /deployments/
-EXPOSE 8089
-CMD ["java", "-jar", "/deployments/quarkus-run.jar"]
+```sql
+-- Tabla: user_account
+CREATE TABLE user_account (
+    id UUID PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255),
+    first_name VARCHAR(25),
+    last_name VARCHAR(25),
+    profile_image BYTEA,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE INDEX idx_user_username ON user_account(username);
+CREATE INDEX idx_user_email ON user_account(email);
 ```
 
-```bash
-# docker-compose.yml
-version: '3.8'
-services:
-  api-role:
-    build: .
-    environment:
-      KEYCLOAK_URL: ${KEYCLOAK_URL}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
-      KEYCLOAK_SERVICE_CLIENT_ID: ${KEYCLOAK_SERVICE_CLIENT_ID}
-      KEYCLOAK_SERVICE_CLIENT_SECRET: ${KEYCLOAK_SERVICE_CLIENT_SECRET}
-    secrets:
-      - keycloak_secret
-    ports:
-      - "8089:8089"
+### D. Configuración de Keycloak
 
-secrets:
-  keycloak_secret:
-    external: true
-```
+**Realm**: `billpay_app`
 
-**Opción 3: Kubernetes con Secrets**
+**Cliente**: `cli_billpay_app`
+- **Client Protocol**: openid-connect
+- **Access Type**: confidential
+- **Service Accounts Enabled**: ON
+- **Authorization Enabled**: OFF
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: api-role-keycloak-secret
-type: Opaque
-stringData:
-  KEYCLOAK_SERVICE_CLIENT_SECRET: <base64_encoded_secret>
+**Roles de Servicio** (Service Account Roles):
+- `realm-management` → `manage-users`
+- `realm-management` → `view-users`
+- `realm-management` → `manage-realm`
 
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: api-role
-spec:
-  template:
-    spec:
-      containers:
-      - name: api-role
-        image: api-role:2.0.0
-        env:
-        - name: KEYCLOAK_URL
-          value: "https://keycloak.production.com/"
-        - name: KEYCLOAK_REALM
-          value: "billpay_app"
-        - name: KEYCLOAK_SERVICE_CLIENT_ID
-          value: "api-role-service-account"
-        - name: KEYCLOAK_SERVICE_CLIENT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: api-role-keycloak-secret
-              key: KEYCLOAK_SERVICE_CLIENT_SECRET
-```
-
-**Opción 4: HashiCorp Vault (Recomendado para Empresas)**
-
-```bash
-# Almacenar en Vault
-vault kv put secret/api-role/keycloak \
-  url=https://keycloak.production.com/ \
-  realm=billpay_app \
-  client_id=api-role-service-account \
-  client_secret=<secret>
-
-# Configurar Quarkus para leer de Vault
-# application.properties
-quarkus.vault.url=https://vault.production.com
-quarkus.vault.authentication.kubernetes.role=api-role
-```
-
-### Verificación Post-Migración
-
-**Checklist de Validación:**
-
-- [ ] Service Account creado en Keycloak
-- [ ] Client Secret generado y almacenado de forma segura
-- [ ] Roles `manage-realm` y `view-realm` asignados
-- [ ] Variables de entorno configuradas
-- [ ] `.env` NO está en el repositorio Git
-- [ ] Aplicación inicia correctamente
-- [ ] Endpoints de roles funcionan (crear, listar, actualizar, eliminar)
-- [ ] Logs muestran "Cliente Keycloak Service Account inicializado correctamente"
-- [ ] No hay errores de autenticación en logs de Keycloak
-
-**Test de Conectividad:**
-
-```bash
-# 1. Verificar que el Service Account puede obtener un token
-curl -X POST 'http://localhost:8083/realms/billpay_app/protocol/openid-connect/token' \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'grant_type=client_credentials' \
-  -d 'client_id=api-role-service-account' \
-  -d 'client_secret=<tu_secret>'
-
-# 2. Probar endpoint de la API
-curl -X GET 'http://localhost:8089/roles' \
-  -H 'Content-Type: application/json'
-```
-
-### Próximos Pasos de Seguridad
-
-Ahora que la autenticación con Keycloak está asegurada, los siguientes pasos son:
-
-1. **Habilitar autenticación en endpoints** (Ver sección 11 - Prioridad 1)
-   - Agregar `@RolesAllowed` a todos los endpoints
-   - Configurar `quarkus-oidc` para validar tokens JWT
-
-2. **Migrar a HTTPS**
-   - Configurar TLS/SSL en Keycloak
-   - Actualizar `keycloak.auth-server-url` a HTTPS
-   - Cambiar `keycloak.ssl-required=all`
-
-3. **Implementar rotación de secretos**
-   - Rotación automática cada 90 días
-   - Usar Vault o AWS Secrets Manager
-
-4. **Actualizar Keycloak Admin Client**
-   - Migrar de versión 22.0.5 a 26.0.x (compatible con servidor 26.3.3)
-
-### Rollback Plan
-
-Si necesitas revertir temporalmente a la versión anterior:
-
-```bash
-# 1. Revertir los cambios en Git
-git revert <commit_hash_de_migracion>
-
-# 2. O restaurar manualmente application.properties
-# (NO RECOMENDADO - Solo para emergencias)
-
-# 3. Reiniciar la aplicación
-./mvnw quarkus:dev
-```
-
-**⚠️ ADVERTENCIA:** El rollback expone nuevamente las vulnerabilidades de seguridad. Solo usar en emergencias y planificar una nueva migración inmediatamente.
-
-### Referencias
-
-- **OAuth 2.1 Security Best Practices:** https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics
-- **Keycloak Service Accounts:** https://www.keycloak.org/docs/latest/server_admin/#_service_accounts
-- **Quarkus Security:** https://quarkus.io/guides/security
-- **CWE-798 - Hard-coded Credentials:** https://cwe.mitre.org/data/definitions/798.html
+**Realm Roles**:
+- `admin_users`
+- `admin_role`
+- `admin_groups`
+- `viewer`
 
 ---
 
-**Migración Completada por:** GitHub Copilot  
-**Fecha:** 18 de noviembre de 2025  
-**Versión del Documento:** 2.0.0
+**Fin del Documento**
 
+_Este documento fue generado mediante análisis automatizado del codebase el 19 de noviembre de 2025._
