@@ -5,7 +5,6 @@ import com.fv.billpay.api.role.dto.request.UserUpdateDto;
 import com.fv.billpay.api.role.dto.response.UserGroupResponseDto;
 import com.fv.billpay.api.role.dto.response.UserResponseDto;
 import com.fv.billpay.api.role.dto.response.UserRoleResponseDto;
-import com.fv.billpay.api.role.entity.UserAccount;
 import com.fv.billpay.api.role.exception.InvalidUserDataException;
 import com.fv.billpay.api.role.exception.KeycloakSyncException;
 import com.fv.billpay.api.role.exception.UserNotFoundException;
