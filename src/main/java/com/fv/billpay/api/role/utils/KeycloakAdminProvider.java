@@ -133,6 +133,15 @@ public class KeycloakAdminProvider {
     }
     
     /**
+     * Obtiene el nombre del realm configurado.
+     * 
+     * @return nombre del realm
+     */
+    public String getRealm() {
+        return realm;
+    }
+    
+    /**
      * Cierra la conexión con Keycloak al destruir el bean.
      */
     @PreDestroy
