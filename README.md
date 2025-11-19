@@ -1,4 +1,22 @@
-# api-role
+# api-identity
+
+API de gestión de identidad y control de acceso (IAM) construida con Quarkus.
+
+Proporciona funcionalidades completas para la gestión de usuarios, roles, grupos y permisos, con sincronización en tiempo real con Keycloak y persistencia en PostgreSQL.
+
+## Características principales
+
+- 👤 **Gestión de Usuarios**: CRUD completo, búsqueda, imágenes de perfil
+- 🔐 **Gestión de Roles**: Creación, actualización y eliminación de roles
+- 👥 **Gestión de Grupos**: Organización jerárquica de usuarios
+- 🔗 **Asignación de Permisos**: Roles a usuarios, roles a grupos, grupos a usuarios
+- 🔄 **Sincronización Keycloak**: Integración completa con Keycloak Admin API
+- 💾 **Persistencia PostgreSQL**: Base de datos reactiva con Hibernate Reactive Panache
+- 🚀 **Alto Rendimiento**: Arquitectura reactiva con SmallRye Mutiny
+- 📝 **API Documentada**: OpenAPI/Swagger UI integrado
+- 🛡️ **Seguridad**: Autenticación JWT y control de acceso basado en roles
+
+## Tecnologías
 
 This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
@@ -49,7 +67,7 @@ Or, if you don't have GraalVM installed, you can run the native executable build
 ./mvnw package -Dnative -Dquarkus.native.container-build=true
 ```
 
-You can then execute your native executable with: `./target/api-role-1.0.0-SNAPSHOT-runner`
+You can then execute your native executable with: `./target/api-identity-1.0.0-SNAPSHOT-runner`
 
 If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
 
