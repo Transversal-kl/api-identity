@@ -11,14 +11,18 @@ public class GroupMapper {
         dto.setId(group.getId());
         dto.setName(group.getName());
         
-        // GroupRepresentation usa attributes para la descripción
-        if (group.getAttributes() != null && group.getAttributes().containsKey("description")) {
+        // Admin Client 26.x tiene campo description directo
+        String description = group.getDescription();
+        
+        // Fallback a attributes si description directo es null
+        if (description == null && group.getAttributes() != null && group.getAttributes().containsKey("description")) {
             var descriptions = group.getAttributes().get("description");
             if (descriptions != null && !descriptions.isEmpty()) {
-                dto.setDescription(descriptions.get(0));
+                description = descriptions.get(0);
             }
         }
         
+        dto.setDescription(description);
         return dto;
     }
 }

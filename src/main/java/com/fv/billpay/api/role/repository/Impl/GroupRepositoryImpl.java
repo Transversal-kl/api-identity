@@ -159,9 +159,16 @@ public class GroupRepositoryImpl implements IGroupRepository {
     public List<GroupRepresentation> getAllGroups(int first, int max) {
         try {
             GroupsResource groups = keycloakAdminProvider.getGroupsResource();
-            // Usar paginación nativa de Keycloak
-            List<GroupRepresentation> groupList = groups.groups(first, max);
-            LOG.debugf("Obtenidos %d grupos (offset: %d, limit: %d)", groupList.size(), first, max);
+            // Con Admin Client 26.x compatible con Server 26.x, podemos usar groups() directamente
+            List<GroupRepresentation> allGroups = groups.groups();
+            
+            // Aplicar paginación manual
+            int fromIndex = Math.min(first, allGroups.size());
+            int toIndex = Math.min(first + max, allGroups.size());
+            List<GroupRepresentation> groupList = allGroups.subList(fromIndex, toIndex);
+            
+            LOG.debugf("Obtenidos %d grupos de %d totales (offset: %d, limit: %d)", 
+                      groupList.size(), allGroups.size(), first, max);
             return groupList;
         } catch (ForbiddenException e) {
             LOG.errorf("Permisos insuficientes para listar grupos: %s", e.getMessage());
@@ -176,11 +183,10 @@ public class GroupRepositoryImpl implements IGroupRepository {
     public long countGroups() {
         try {
             GroupsResource groups = keycloakAdminProvider.getGroupsResource();
-            // Keycloak GroupsResource count() devuelve Map<String, Long>
-            Map<String, Long> countMap = groups.count();
-            long total = countMap.getOrDefault("count", 0L);
-            LOG.debugf("Total de grupos: %d", total);
-            return total;
+            // Con Admin Client 26.x, groups().size() funciona correctamente
+            int count = groups.groups().size();
+            LOG.debugf("Total de grupos en Keycloak: %d", count);
+            return count;
         } catch (ForbiddenException e) {
             LOG.errorf("Permisos insuficientes para contar grupos: %s", e.getMessage());
             return 0;
