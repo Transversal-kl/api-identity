@@ -2,6 +2,7 @@ package com.fv.billpay.api.identity.service;
 
 import com.fv.billpay.api.identity.dto.request.UserRequestDto;
 import com.fv.billpay.api.identity.dto.request.UserUpdateDto;
+import com.fv.billpay.api.identity.dto.response.PagedResponse;
 import com.fv.billpay.api.identity.dto.response.UserGroupResponseDto;
 import com.fv.billpay.api.identity.dto.response.UserResponseDto;
 import com.fv.billpay.api.identity.dto.response.UserRoleResponseDto;
@@ -37,7 +38,7 @@ public interface IUserService {
     /**
      * Obtiene todos los usuarios con paginación.
      */
-    Uni<List<UserResponseDto>> getAllUsers(int page, int size);
+    Uni<PagedResponse<UserResponseDto>> getAllUsers(int page, int size);
 
     /**
      * Busca usuarios por username.
@@ -65,9 +66,9 @@ public interface IUserService {
     Uni<List<UserGroupResponseDto>> removeGroupsFromUser(String userId, List<String> groupIds);
 
     /**
-     * Obtiene los grupos de un usuario.
+     * Obtiene los grupos de un usuario con paginación.
      */
-    Uni<List<UserGroupResponseDto>> getUserGroups(String userId);
+    Uni<PagedResponse<UserGroupResponseDto>> getUserGroups(String userId, int page, int size);
 
     /**
      * Asigna roles a un usuario.
@@ -80,7 +81,7 @@ public interface IUserService {
     Uni<List<UserRoleResponseDto>> removeRolesFromUser(String userId, List<String> roleNames);
 
     /**
-     * Obtiene los roles de un usuario.
+     * Obtiene los roles de un usuario con paginación.
      */
-    Uni<List<UserRoleResponseDto>> getUserRoles(String userId);
+    Uni<PagedResponse<UserRoleResponseDto>> getUserRoles(String userId, int page, int size);
 }

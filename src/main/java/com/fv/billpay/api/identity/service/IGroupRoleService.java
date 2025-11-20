@@ -2,6 +2,7 @@ package com.fv.billpay.api.identity.service;
 
 import com.fv.billpay.api.identity.dto.request.GroupRoleRequestDto;
 import com.fv.billpay.api.identity.dto.response.GroupRoleResponseDto;
+import com.fv.billpay.api.identity.dto.response.PagedResponse;
 
 import java.util.List;
 
@@ -27,11 +28,13 @@ public interface IGroupRoleService {
     boolean removeRolesFromGroup(String groupId, GroupRoleRequestDto dto);
     
     /**
-     * Obtiene todos los roles asignados a un grupo
+     * Obtiene todos los roles asignados a un grupo con paginación
      * @param groupId ID del grupo
-     * @return Lista de roles asignados
+     * @param page Número de página (inicia en 0)
+     * @param size Tamaño de página
+     * @return Respuesta paginada con roles asignados
      */
-    List<GroupRoleResponseDto> getGroupRoles(String groupId);
+    PagedResponse<GroupRoleResponseDto> getGroupRoles(String groupId, int page, int size);
     
     /**
      * Obtiene todos los roles disponibles (no asignados) para un grupo

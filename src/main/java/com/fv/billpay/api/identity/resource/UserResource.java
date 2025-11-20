@@ -2,12 +2,15 @@ package com.fv.billpay.api.identity.resource;
 
 import com.fv.billpay.api.identity.dto.request.UserRequestDto;
 import com.fv.billpay.api.identity.dto.request.UserUpdateDto;
+import com.fv.billpay.api.identity.dto.response.PagedResponse;
 import com.fv.billpay.api.identity.dto.response.UserResponseDto;
 import com.fv.billpay.api.identity.service.IUserService;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -102,17 +105,17 @@ public class UserResource {
     @Operation(summary = "Listar usuarios", description = "Obtiene todos los usuarios con paginación")
     @APIResponse(
         responseCode = "200",
-        description = "Lista de usuarios",
-        content = @Content(schema = @Schema(implementation = UserResponseDto.class))
+        description = "Lista paginada de usuarios",
+        content = @Content(schema = @Schema(implementation = PagedResponse.class))
     )
     public Uni<Response> getAllUsers(
             @Parameter(description = "Número de página (inicia en 0)")
-            @QueryParam("page") @DefaultValue("0") int page,
+            @QueryParam("page") @DefaultValue("0") @Min(value = 0, message = "La página debe ser mayor o igual a 0") int page,
             @Parameter(description = "Tamaño de página")
-            @QueryParam("size") @DefaultValue("20") int size) {
+            @QueryParam("size") @DefaultValue("10") @Min(value = 1, message = "El tamaño debe ser al menos 1") @Max(value = 100, message = "El tamaño máximo es 100") int size) {
         log.info("Listando usuarios - página: {}, tamaño: {}", page, size);
         return userService.getAllUsers(page, size)
-            .map(users -> Response.ok(users).build());
+            .map(pagedResponse -> Response.ok(pagedResponse).build());
     }
 
     @GET

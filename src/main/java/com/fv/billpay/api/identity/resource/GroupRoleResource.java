@@ -2,11 +2,14 @@ package com.fv.billpay.api.identity.resource;
 
 import com.fv.billpay.api.identity.dto.request.GroupRoleRequestDto;
 import com.fv.billpay.api.identity.dto.response.GroupRoleResponseDto;
+import com.fv.billpay.api.identity.dto.response.PagedResponse;
 import com.fv.billpay.api.identity.service.IGroupRoleService;
 import com.fv.billpay.api.identity.utils.Process;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -57,16 +60,25 @@ public class GroupRoleResource {
     }
 
     /**
-     * Obtener roles asignados a un grupo
-     * GET /groups/{groupId}/roles
+     * Obtener roles asignados a un grupo con paginación
+     * GET /groups/{groupId}/roles?page=0&size=10
      */
     @GET
     @RolesAllowed({"admin_groups"})
     public Response getGroupRoles(
             @PathParam("groupId")
             @NotBlank(message = "El ID del grupo es requerido")
-            String groupId) {
-        List<GroupRoleResponseDto> roles = service.getGroupRoles(groupId);
+            String groupId,
+            @QueryParam("page")
+            @DefaultValue("0")
+            @Min(value = 0, message = "La página debe ser mayor o igual a 0")
+            int page,
+            @QueryParam("size")
+            @DefaultValue("10")
+            @Min(value = 1, message = "El tamaño debe ser al menos 1")
+            @Max(value = 100, message = "El tamaño máximo es 100")
+            int size) {
+        PagedResponse<GroupRoleResponseDto> roles = service.getGroupRoles(groupId, page, size);
         return Process.ok(roles);
     }
 

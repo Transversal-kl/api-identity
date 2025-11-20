@@ -6,6 +6,8 @@ import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -69,15 +71,19 @@ public class UserGroupResource {
     @RolesAllowed({"admin_users"})
     @Operation(
         summary = "Obtener grupos de usuario", 
-        description = "Obtiene todos los grupos asignados a un usuario"
+        description = "Obtiene todos los grupos asignados a un usuario con paginación"
     )
-    @APIResponse(responseCode = "200", description = "Lista de grupos del usuario")
+    @APIResponse(responseCode = "200", description = "Lista paginada de grupos del usuario")
     @APIResponse(responseCode = "404", description = "Usuario no encontrado")
     public Uni<Response> getUserGroups(
             @Parameter(description = "ID del usuario", required = true)
-            @PathParam("userId") String userId) {
-        log.info("Obteniendo grupos del usuario: {}", userId);
-        return userService.getUserGroups(userId)
-            .map(groups -> Response.ok(groups).build());
+            @PathParam("userId") String userId,
+            @Parameter(description = "Número de página (inicia en 0)")
+            @QueryParam("page") @DefaultValue("0") @Min(value = 0, message = "La página debe ser mayor o igual a 0") int page,
+            @Parameter(description = "Tamaño de página")
+            @QueryParam("size") @DefaultValue("10") @Min(value = 1, message = "El tamaño debe ser al menos 1") @Max(value = 100, message = "El tamaño máximo es 100") int size) {
+        log.info("Obteniendo grupos del usuario: {} - página: {}, tamaño: {}", userId, page, size);
+        return userService.getUserGroups(userId, page, size)
+            .map(pagedResponse -> Response.ok(pagedResponse).build());
     }
 }

@@ -2,6 +2,7 @@ package com.fv.billpay.api.identity.service.Impl;
 
 import com.fv.billpay.api.identity.dto.request.UserRequestDto;
 import com.fv.billpay.api.identity.dto.request.UserUpdateDto;
+import com.fv.billpay.api.identity.dto.response.PagedResponse;
 import com.fv.billpay.api.identity.dto.response.UserGroupResponseDto;
 import com.fv.billpay.api.identity.dto.response.UserResponseDto;
 import com.fv.billpay.api.identity.dto.response.UserRoleResponseDto;
@@ -188,7 +189,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @WithSession
-    public Uni<List<UserResponseDto>> getAllUsers(int page, int size) {
+    public Uni<PagedResponse<UserResponseDto>> getAllUsers(int page, int size) {
         // Validar parámetros de paginación
         if (page < 0 || size <= 0) {
             return Uni.createFrom().failure(new InvalidUserDataException(
@@ -196,7 +197,9 @@ public class UserServiceImpl implements IUserService {
             ));
         }
         
-        return userAccountRepository.findAllPaginated(page, size)
+        // Obtener el total de usuarios y los datos paginados en paralelo
+        Uni<Long> totalCountUni = userAccountRepository.count();
+        Uni<List<UserResponseDto>> usersUni = userAccountRepository.findAllPaginated(page, size)
             .map(userAccounts -> userAccounts.stream()
                 .map(userAccount -> {
                     try {
@@ -209,7 +212,16 @@ public class UserServiceImpl implements IUserService {
                         return UserMapper.toResponseDto(userAccount, null);
                     }
                 })
-                .collect(Collectors.toList()))
+                .collect(Collectors.toList()));
+        
+        // Combinar ambos resultados
+        return Uni.combine().all().unis(usersUni, totalCountUni).asTuple()
+            .map(tuple -> new PagedResponse<>(
+                tuple.getItem1(),  // content
+                tuple.getItem2(),  // totalElements
+                page,              // page
+                size               // size
+            ))
             .onFailure().transform(error -> {
                 log.error("Error al obtener usuarios", error);
                 return new KeycloakSyncException("Error al obtener usuarios", error);
@@ -340,7 +352,7 @@ public class UserServiceImpl implements IUserService {
             log.info("Grupos asignados exitosamente al usuario: {}", userId);
             return userId;
         })
-        .chain(id -> getUserGroups(id))
+        .chain(id -> getAllUserGroups(id))
         .onFailure().transform(error -> {
             if (error instanceof UserNotFoundException ||
                 error instanceof InvalidUserDataException ||
@@ -366,7 +378,7 @@ public class UserServiceImpl implements IUserService {
             log.info("Grupos removidos exitosamente del usuario: {}", userId);
             return userId;
         })
-        .chain(id -> getUserGroups(id))
+        .chain(id -> getAllUserGroups(id))
         .onFailure().transform(error -> {
             if (error instanceof UserNotFoundException ||
                 error instanceof InvalidUserDataException ||
@@ -379,7 +391,57 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
-    public Uni<List<UserGroupResponseDto>> getUserGroups(String userId) {
+    public Uni<PagedResponse<UserGroupResponseDto>> getUserGroups(String userId, int page, int size) {
+        // Validar parámetros de paginación
+        if (page < 0 || size <= 0) {
+            return Uni.createFrom().failure(new InvalidUserDataException(
+                "Parámetros de paginación inválidos (page=" + page + ", size=" + size + ")"
+            ));
+        }
+        
+        return Uni.createFrom().item(() -> {
+            var allGroups = userKeycloakRepository.getUserGroups(userId);
+            
+            // Convertir a DTOs
+            List<UserGroupResponseDto> groupDtos = allGroups.stream()
+                .map(group -> new UserGroupResponseDto(
+                    group.getId(),
+                    group.getName(),
+                    group.getPath()
+                ))
+                .collect(Collectors.toList());
+            
+            // Aplicar paginación manual
+            int totalElements = groupDtos.size();
+            int fromIndex = page * size;
+            int toIndex = Math.min(fromIndex + size, totalElements);
+            
+            List<UserGroupResponseDto> pagedContent = fromIndex < totalElements
+                ? groupDtos.subList(fromIndex, toIndex)
+                : List.of();
+            
+            return new PagedResponse<>(
+                pagedContent,
+                totalElements,
+                page,
+                size
+            );
+        })
+        .onFailure().transform(error -> {
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
+                return error;
+            }
+            log.error("Error inesperado al obtener grupos del usuario: {}", userId, error);
+            return new KeycloakSyncException("Error inesperado al obtener grupos", error);
+        });
+    }
+
+    /**
+     * Método privado para obtener todos los grupos sin paginación (uso interno)
+     */
+    private Uni<List<UserGroupResponseDto>> getAllUserGroups(String userId) {
         return Uni.createFrom().item(() -> {
             var groups = userKeycloakRepository.getUserGroups(userId);
             return groups.stream()
@@ -415,7 +477,7 @@ public class UserServiceImpl implements IUserService {
             log.info("Roles asignados exitosamente al usuario: {}", userId);
             return userId;
         })
-        .chain(id -> getUserRoles(id))
+        .chain(id -> getAllUserRoles(id))
         .onFailure().transform(error -> {
             if (error instanceof UserNotFoundException ||
                 error instanceof InvalidUserDataException ||
@@ -441,7 +503,7 @@ public class UserServiceImpl implements IUserService {
             log.info("Roles removidos exitosamente del usuario: {}", userId);
             return userId;
         })
-        .chain(id -> getUserRoles(id))
+        .chain(id -> getAllUserRoles(id))
         .onFailure().transform(error -> {
             if (error instanceof UserNotFoundException ||
                 error instanceof InvalidUserDataException ||
@@ -454,7 +516,56 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
-    public Uni<List<UserRoleResponseDto>> getUserRoles(String userId) {
+    public Uni<PagedResponse<UserRoleResponseDto>> getUserRoles(String userId, int page, int size) {
+        // Validar parámetros de paginación
+        if (page < 0 || size <= 0) {
+            return Uni.createFrom().failure(new InvalidUserDataException(
+                "Parámetros de paginación inválidos (page=" + page + ", size=" + size + ")"
+            ));
+        }
+        
+        return Uni.createFrom().item(() -> {
+            var allRoles = userKeycloakRepository.getUserRoles(userId);
+            
+            // Convertir a DTOs
+            List<UserRoleResponseDto> roleDtos = allRoles.stream()
+                .map(role -> new UserRoleResponseDto(
+                    role.getName(),
+                    role.getDescription()
+                ))
+                .collect(Collectors.toList());
+            
+            // Aplicar paginación manual
+            int totalElements = roleDtos.size();
+            int fromIndex = page * size;
+            int toIndex = Math.min(fromIndex + size, totalElements);
+            
+            List<UserRoleResponseDto> pagedContent = fromIndex < totalElements
+                ? roleDtos.subList(fromIndex, toIndex)
+                : List.of();
+            
+            return new PagedResponse<>(
+                pagedContent,
+                totalElements,
+                page,
+                size
+            );
+        })
+        .onFailure().transform(error -> {
+            if (error instanceof UserNotFoundException ||
+                error instanceof InvalidUserDataException ||
+                error instanceof KeycloakSyncException) {
+                return error;
+            }
+            log.error("Error inesperado al obtener roles del usuario: {}", userId, error);
+            return new KeycloakSyncException("Error inesperado al obtener roles", error);
+        });
+    }
+
+    /**
+     * Método privado para obtener todos los roles sin paginación (uso interno)
+     */
+    private Uni<List<UserRoleResponseDto>> getAllUserRoles(String userId) {
         return Uni.createFrom().item(() -> {
             var roles = userKeycloakRepository.getUserRoles(userId);
             return roles.stream()

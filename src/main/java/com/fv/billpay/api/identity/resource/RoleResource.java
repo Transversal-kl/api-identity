@@ -25,7 +25,7 @@ public class RoleResource {
     IRoleService service;
 
     @POST
-    @RolesAllowed({"admin_role"})
+    @RolesAllowed({"admin_roles"})
     public Response create(@Valid @ConvertGroup(to = RoleRequestDto.CreateValidation.class) RoleRequestDto dto) {
         return Process.ok(service.create(dto));
     }

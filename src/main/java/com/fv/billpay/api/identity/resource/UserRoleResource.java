@@ -6,6 +6,8 @@ import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -69,15 +71,19 @@ public class UserRoleResource {
     @RolesAllowed({"admin_users"})
     @Operation(
         summary = "Obtener roles de usuario", 
-        description = "Obtiene todos los roles realm asignados a un usuario"
+        description = "Obtiene todos los roles realm asignados a un usuario con paginación"
     )
-    @APIResponse(responseCode = "200", description = "Lista de roles del usuario")
+    @APIResponse(responseCode = "200", description = "Lista paginada de roles del usuario")
     @APIResponse(responseCode = "404", description = "Usuario no encontrado")
     public Uni<Response> getUserRoles(
             @Parameter(description = "ID del usuario", required = true)
-            @PathParam("userId") String userId) {
-        log.info("Obteniendo roles del usuario: {}", userId);
-        return userService.getUserRoles(userId)
-            .map(roles -> Response.ok(roles).build());
+            @PathParam("userId") String userId,
+            @Parameter(description = "Número de página (inicia en 0)")
+            @QueryParam("page") @DefaultValue("0") @Min(value = 0, message = "La página debe ser mayor o igual a 0") int page,
+            @Parameter(description = "Tamaño de página")
+            @QueryParam("size") @DefaultValue("10") @Min(value = 1, message = "El tamaño debe ser al menos 1") @Max(value = 100, message = "El tamaño máximo es 100") int size) {
+        log.info("Obteniendo roles del usuario: {} - página: {}, tamaño: {}", userId, page, size);
+        return userService.getUserRoles(userId, page, size)
+            .map(pagedResponse -> Response.ok(pagedResponse).build());
     }
 }
